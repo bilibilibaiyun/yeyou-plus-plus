@@ -1,0 +1,15 @@
+[package]
+name = "speedhack"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+minhook-sys = "0.1.1"
+winapi = { version = "0.3", features = ["winbase", "sysinfoapi", "profileapi", "memoryapi", "synchapi", "handleapi", "libloaderapi", "timeapi", "errhandlingapi", "winnt", "impl-default"] }
+
+[profile.release]
+opt-level = 2
+strip = true

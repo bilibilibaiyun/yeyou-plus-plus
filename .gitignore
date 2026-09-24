@@ -1,0 +1,56 @@
+# ============ 构建产物 ============
+bin/
+obj/
+artifacts/
+publish/
+
+# ============ CEF 运行库与 Flash 插件（体积大/版权原因不进仓库，安装包内分发） ============
+*.dll
+*.pak
+*.dat
+*.bin
+engine/
+
+# ============ 本地工具与缓存 ============
+.tools/
+.dotnet-cli/
+.nuget-packages/
+.pylibs/
+.cargo/
+.rustup/
+
+# ============ 运行时生成 ============
+data/
+cache/
+*.log
+_speedhack_alive.txt
+
+# ============ 临时与诊断 ============
+_*/
+*.tmp
+*.user
+.vs/
+
+# ============ 废弃的 Rust CEF 154 探索残留（仅保留在本地，不进仓库） ============
+# 根目录的 Rust 旧工程（非 speedhack/ 下的变速齿轮工程）
+/Cargo.toml
+/Cargo.lock
+/build.rs
+/src/
+/target/
+/vendor/
+/cef/
+/cef_binary_*.tar.bz2
+/ruffle/
+/web-assets/
+/release/
+/sample.swf
+
+# ============ 变速齿轮构建产物 ============
+speedhack/target/
+
+# ============ 图标生成源 ============
+assets/icon/*.tmp
+
+# 诊断脚本
+_test_*.py
