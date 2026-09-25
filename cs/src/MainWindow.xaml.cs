@@ -122,10 +122,13 @@ namespace YeyouPlusPlus
 
         // ================= 标签系统 =================
 
-        private int CreateTab(IRequestContext requestContext = null)
+        private int CreateTab(string initialUrl = "about:blank", IRequestContext requestContext = null)
         {
-            var host = new BrowserHost("about:blank", requestContext);
+            // 初始 URL 直接传给 ChromiumWebBrowser 构造函数（CEF 原生机制，时序安全）；
+            // 若在 OnAfterCreated 时机手动 Load 会被主 frame 未就绪吞掉（影子标签空白根因）。
+            var host = new BrowserHost(initialUrl, requestContext);
             var tab = new BrowserTab { Host = host };
+            tab.HasNavigated = initialUrl != "about:blank";
 
             host.AddressChanged += (s, e) => Dispatcher.InvokeAsync(() => OnTabAddressChanged(tab));
             host.TitleChanged += (s, e) => Dispatcher.InvokeAsync(() => OnTabTitleChanged(tab));
@@ -239,13 +242,15 @@ namespace YeyouPlusPlus
             ShowView("browser");
         }
 
-        /// <summary>在标签中打开 URL：复用空白标签，否则新建。</summary>
+        /// <summary>在标签中打开 URL：复用已初始化的空白标签，否则新建标签直接以目标 URL 初始化。</summary>
         private void OpenInTab(string url)
         {
             int idx = -1;
             for (int i = 0; i < tabs.Count; i++)
             {
-                if (!tabs[i].HasNavigated && tabs[i].Host.Address == "about:blank")
+                // 只复用已完成初始化的空白标签；未初始化的复用同样会踩「过早 Load」坑。
+                if (!tabs[i].HasNavigated && tabs[i].Host.Address == "about:blank"
+                    && tabs[i].Host.IsBrowserInitializedForDiag)
                 {
                     idx = i;
                     break;
@@ -253,7 +258,13 @@ namespace YeyouPlusPlus
             }
             if (idx < 0)
             {
-                idx = CreateTab();
+                // 新建标签：直接以目标 URL 初始化（CEF 原生机制，避免过早 Load 被吞）。
+                idx = CreateTab(url);
+                activeTabIndex = idx;
+                ApplyActiveTab();
+                ShowView("browser");
+                AddressBox.Text = url;
+                return;
             }
             activeTabIndex = idx;
             ApplyActiveTab();
@@ -1009,12 +1020,20 @@ namespace YeyouPlusPlus
         /// <summary>在新标签页中打开影子（独立 RequestContext，cookie/缓存隔离）。</summary>
         private void OpenShadow(ShadowItem sh)
         {
-            var context = ShadowManager.GetContext(sh.Id);
-            var idx = CreateTab(context);
-            activeTabIndex = idx;
-            ApplyActiveTab();
-            ShowView("browser");
-            NavigateOnTab(idx, sh.Url);
+            try
+            {
+                var context = ShadowManager.GetContext(sh.Id);
+                // 直接以目标 URL + 独立 context 创建标签（CEF 原生导航机制，时序安全）。
+                var idx = CreateTab(sh.Url, context);
+                activeTabIndex = idx;
+                ApplyActiveTab();
+                ShowView("browser");
+                AddressBox.Text = sh.Url;
+            }
+            catch (Exception ex)
+            {
+                SetStatus("打开影子失败：" + ex.Message);
+            }
         }
 
         // ================= 设置 =================

@@ -28,6 +28,8 @@ namespace YeyouPlusPlus
         public bool IsLoading => browser.IsLoading;
         public bool CanGoBack => browser.CanGoBack;
         public bool CanGoForward => browser.CanGoForward;
+        /// <summary>[诊断] 浏览器是否已完成初始化。</summary>
+        public bool IsBrowserInitializedForDiag => browser.IsBrowserInitialized;
 
         public BrowserHost(string initialUrl = "about:blank", IRequestContext requestContext = null)
         {
@@ -80,11 +82,19 @@ namespace YeyouPlusPlus
             }
 
             // 若初始化前调用过 Load，则此刻真正发起导航。
+            // 注意：OnAfterCreated 时机主 frame 可能尚未就绪，立即 Load 会被静默吞掉
+            //（影子标签/新建标签空白的根因），延迟到 Dispatcher 下一拍再导航。
             if (!string.IsNullOrEmpty(pendingUrl))
             {
                 var url = pendingUrl;
                 pendingUrl = null;
-                browser.Load(url);
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (!browser.IsDisposed)
+                    {
+                        browser.Load(url);
+                    }
+                }), System.Windows.Threading.DispatcherPriority.Background);
             }
         }
 
