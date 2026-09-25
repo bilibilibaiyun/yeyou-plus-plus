@@ -1,0 +1,34 @@
+<Window x:Class="YeyouPlusPlus.ShadowWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="添加影子" Height="240" Width="400"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False"
+        Background="{DynamicResource Theme.WindowBg}"
+        Foreground="{DynamicResource Theme.TextPrimary}">
+    <Grid Margin="22,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="为当前网站创建一个影子（小号）" FontSize="14" FontWeight="SemiBold"
+                   Foreground="{DynamicResource Theme.TextPrimary}"/>
+        <TextBlock Grid.Row="1" Text="影子拥有独立的登录状态和数据，与原浏览互不影响、长期保存。"
+                   FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Theme.TextSecondary}"/>
+
+        <TextBlock Grid.Row="2" Text="备注名称（可选）" FontSize="12" Margin="0,16,0,0"
+                   Foreground="{DynamicResource Theme.TextSecondary}"/>
+        <TextBox x:Name="NameBox" Grid.Row="3" Height="34" Margin="0,8,0,0"
+                 VerticalContentAlignment="Center" MaxLength="30"/>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="取消" Width="84" Height="34" Margin="0,0,8,0" Click="CancelButton_Click"/>
+            <Button Content="创建" Width="84" Height="34" Style="{StaticResource PrimaryButton}"
+                    Click="CreateButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

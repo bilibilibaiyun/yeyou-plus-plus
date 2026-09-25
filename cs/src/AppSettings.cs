@@ -17,6 +17,9 @@ namespace YeyouPlusPlus
 
         /// <summary>下载保存路径（空 = 数据目录 downloads）。</summary>
         public string DownloadDirPath { get; set; }
+
+        /// <summary>是否使用夜间模式（false = 日间）。</summary>
+        public bool IsDarkMode { get; set; }
     }
 
     public static class AppSettingsStore

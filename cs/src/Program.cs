@@ -29,6 +29,17 @@ namespace YeyouPlusPlus
             }
             catch (Exception ex)
             {
+                // 把异常详情写入日志文件，便于无交互环境下诊断启动失败。
+                try
+                {
+                    File.WriteAllText(
+                        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash.log"),
+                        ex.ToString());
+                }
+                catch
+                {
+                    // 忽略写日志失败。
+                }
                 MessageBox.Show("启动失败：" + ex.Message, "页游++", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -56,6 +67,9 @@ namespace YeyouPlusPlus
             var settings = new CefSharp.WinForms.CefSettings
             {
                 CachePath = AppPaths.CacheDir,
+                // 影子（小号）功能依赖：所有 profile 缓存目录的公共根目录。
+                // 全局 CachePath 与各影子的 RequestContextSettings.CachePath 都必须是其子目录。
+                RootCachePath = AppPaths.ProfilesRoot,
                 LogFile = Path.Combine(baseDir, "cef_debug.log"),
                 LogSeverity = LogSeverity.Verbose,
                 // 显式指定子进程路径（与 CefFlashBrowser 一致）。

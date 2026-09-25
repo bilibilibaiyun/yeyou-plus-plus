@@ -67,7 +67,26 @@ namespace YeyouPlusPlus
             }
         }
 
-        /// <summary>CEF 缓存目录。</summary>
-        public static string CacheDir => Path.Combine(BaseDir, "cache");
+        /// <summary>CEF 所有 profile 的根目录（RootCachePath）。</summary>
+        public static string ProfilesRoot
+        {
+            get
+            {
+                var dir = Path.Combine(DataDir, "profiles");
+                try { Directory.CreateDirectory(dir); } catch { }
+                return dir;
+            }
+        }
+
+        /// <summary>CEF 全局缓存目录（默认 profile）。</summary>
+        public static string CacheDir
+        {
+            get
+            {
+                var dir = Path.Combine(ProfilesRoot, "default");
+                try { Directory.CreateDirectory(dir); } catch { }
+                return dir;
+            }
+        }
     }
 }

@@ -4,7 +4,7 @@
 
 #define MyAppName "页游++"
 #define MyAppNameEn "YeyouPlusPlus"
-#define MyAppVersion "2.0.4"
+#define MyAppVersion "2.0.5"
 #define MyAppPublisher "Yeyou Plus Plus contributors"
 #define MyAppExeName "YeyouPlusPlus.exe"
 
@@ -17,7 +17,7 @@ DefaultDirName={sd}\页游++
 DefaultGroupName=页游++
 UninstallDisplayIcon={app}\{#MyAppExeName}
 OutputDir=..\artifacts
-OutputBaseFilename=YeyouPlusPlus_2.0.4_x64_Setup
+OutputBaseFilename=YeyouPlusPlus_2.0.5_x64_Setup
 SetupIconFile=..\assets\icon\app.ico
 Compression=lzma2/max
 SolidCompression=yes
@@ -45,7 +45,10 @@ Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
+; 交互安装：显示「运行」复选框由用户决定。
 Filename: "{app}\{#MyAppExeName}"; Description: "运行 {#MyAppName}"; Flags: nowait postinstall skipifsilent
+; 静默安装（内置更新覆盖安装）：安装完成后自动启动软件。
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait skipifnotsilent
 
 [UninstallDelete]
 ; 卸载时清除程序目录下的全部运行时数据（缓存、配置、收藏、快捷入口、下载、更新包）

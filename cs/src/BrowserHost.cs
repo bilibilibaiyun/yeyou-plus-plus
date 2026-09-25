@@ -29,10 +29,14 @@ namespace YeyouPlusPlus
         public bool CanGoBack => browser.CanGoBack;
         public bool CanGoForward => browser.CanGoForward;
 
-        public BrowserHost(string initialUrl = "about:blank")
+        public BrowserHost(string initialUrl = "about:blank", IRequestContext requestContext = null)
         {
 #pragma warning disable CS0618
-            browser = new ChromiumWebBrowser(initialUrl);
+            // 传 null 用全局 RequestContext（普通浏览），
+            // 传独立 context 则实现影子（小号）的 cookie/缓存隔离。
+            browser = requestContext == null
+                ? new ChromiumWebBrowser(initialUrl)
+                : new ChromiumWebBrowser(initialUrl, requestContext);
             browser.CreateControl();
 #pragma warning restore CS0618
 

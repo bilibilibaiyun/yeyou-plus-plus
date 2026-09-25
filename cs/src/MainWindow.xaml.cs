@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -10,6 +11,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using CefSharp;
 
 namespace YeyouPlusPlus
 {
@@ -41,6 +43,9 @@ namespace YeyouPlusPlus
         private bool sidebarCollapsed;
         private bool updatingZoomUi;
         private List<ReleaseInfo> releases;
+        private readonly DispatcherTimer zoomDebounce;
+        private double pendingZoomPercent = 100;
+        private bool shadowSidebarExpanded;
 
         /// <summary>当前激活标签的浏览器宿主。</summary>
         private BrowserHost CurrentHost
@@ -78,6 +83,15 @@ namespace YeyouPlusPlus
             };
             titleTimer.Start();
 
+            // 缩放 debounce：拖动滑块停止 150ms 后才真正应用缩放并写入记忆，
+            // 避免拖动过程中高频调用 CEF SetZoomLevel + 磁盘写入导致的卡顿。
+            zoomDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+            zoomDebounce.Tick += (s, e) =>
+            {
+                zoomDebounce.Stop();
+                ApplyZoomNow();
+            };
+
             // 站点图标下载完成后刷新快捷入口。
             QuickLinks.IconUpdated += OnQuickLinkIconUpdated;
 
@@ -87,9 +101,11 @@ namespace YeyouPlusPlus
             // 初始创建一个空标签（启动仍显示主页）。
             CreateTab();
             activeTabIndex = 0;
+            RenderTabs();
 
             RenderQuickLinks();
             RefreshSettingsView();
+            UpdateThemeToggleIcon();
 
             // 启动默认执行一次检查更新（网络失败静默）。
             RunUpdateCheck(manual: false);
@@ -104,9 +120,9 @@ namespace YeyouPlusPlus
 
         // ================= 标签系统 =================
 
-        private int CreateTab()
+        private int CreateTab(IRequestContext requestContext = null)
         {
-            var host = new BrowserHost("about:blank");
+            var host = new BrowserHost("about:blank", requestContext);
             var tab = new BrowserTab { Host = host };
 
             host.AddressChanged += (s, e) => Dispatcher.InvokeAsync(() => OnTabAddressChanged(tab));
@@ -130,6 +146,7 @@ namespace YeyouPlusPlus
                 AddressBox.Text = addr;
                 UpdateNavButtons();
                 UpdateFavoriteButton();
+                CheckShadowAutoExpand();
             }
         }
 
@@ -181,6 +198,7 @@ namespace YeyouPlusPlus
                 AddressBox.Text = h.Address;
                 UpdateNavButtons();
                 UpdateFavoriteButton();
+                CheckShadowAutoExpand();
             }
         }
 
@@ -354,6 +372,22 @@ namespace YeyouPlusPlus
 
         private void ToggleSidebarButton_Click(object sender, RoutedEventArgs e) => ToggleSidebar();
 
+        private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)
+        {
+            var dark = !ThemeManager.IsDark;
+            ThemeManager.Apply(dark);
+            AppSettingsStore.Current.IsDarkMode = dark;
+            AppSettingsStore.Save();
+            UpdateThemeToggleIcon();
+            SetStatus(dark ? "已切换到夜间模式" : "已切换到日间模式");
+        }
+
+        private void UpdateThemeToggleIcon()
+        {
+            // 日间显示月亮（点击切夜间），夜间显示太阳（点击切日间）。
+            ThemeToggleButton.Content = ThemeManager.IsDark ? "\uE706" : "\uE708";
+        }
+
         private void ToggleSidebar()
         {
             sidebarCollapsed = !sidebarCollapsed;
@@ -500,22 +534,34 @@ namespace YeyouPlusPlus
 
         private void ZoomSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            ZoomValueText.Text = ((int)e.NewValue) + "%";
-            if (updatingZoomUi)
+            // XAML 解析设置 Minimum/Maximum 时就会触发本事件，此时构造函数尚未执行、
+            // zoomDebounce / ZoomValueText 可能还是 null，必须判空。
+            if (ZoomValueText != null)
+            {
+                ZoomValueText.Text = ((int)e.NewValue) + "%";
+            }
+            if (updatingZoomUi || zoomDebounce == null)
             {
                 return;
             }
+            // debounce：拖动停止后才真正应用，避免高频 SetZoomLevel + 磁盘写入卡顿。
+            pendingZoomPercent = e.NewValue;
+            zoomDebounce.Stop();
+            zoomDebounce.Start();
+        }
+
+        private void ApplyZoomNow()
+        {
             var h = CurrentHost;
             if (h == null)
             {
                 return;
             }
-            var percent = e.NewValue;
-            h.SetZoomPercent(percent);
+            h.SetZoomPercent(pendingZoomPercent);
             var addr = h.Address;
             if (!string.IsNullOrEmpty(addr) && addr != "about:blank")
             {
-                ZoomStore.Set(addr, percent);
+                ZoomStore.Set(addr, pendingZoomPercent);
             }
         }
 
@@ -526,17 +572,9 @@ namespace YeyouPlusPlus
             updatingZoomUi = false;
             ZoomValueText.Text = "100%";
 
-            var h = CurrentHost;
-            if (h == null)
-            {
-                return;
-            }
-            h.SetZoomPercent(100);
-            var addr = h.Address;
-            if (!string.IsNullOrEmpty(addr) && addr != "about:blank")
-            {
-                ZoomStore.Set(addr, 100);
-            }
+            pendingZoomPercent = 100;
+            zoomDebounce.Stop();
+            ApplyZoomNow();
         }
 
         // ================= 收藏 =================
@@ -571,7 +609,8 @@ namespace YeyouPlusPlus
         {
             var h = CurrentHost;
             var fav = h != null && !string.IsNullOrEmpty(h.Address) && Favorites.Contains(h.Address);
-            FavoriteButton.Content = fav ? "\uE734" : "\uE735"; // 实心/空心星
+            // E735 = 实心星（已收藏），E734 = 空心星（未收藏）。
+            FavoriteButton.Content = fav ? "\uE735" : "\uE734";
             FavoriteButton.Foreground = fav
                 ? (Brush)FindResource("Theme.Accent")
                 : (Brush)FindResource("Theme.TextPrimary");
@@ -814,17 +853,160 @@ namespace YeyouPlusPlus
 
         private void EdgeStoreButton_Click(object sender, RoutedEventArgs e)
         {
-            ExtensionsManager.OpenStore(ExtensionsManager.EdgeStoreUrl);
+            // 在本软件内部标签页打开扩展商店，不跳转系统默认浏览器。
+            OpenInTab(ExtensionsManager.EdgeStoreUrl);
         }
 
         private void ChromeStoreButton_Click(object sender, RoutedEventArgs e)
         {
-            ExtensionsManager.OpenStore(ExtensionsManager.ChromeStoreUrl);
+            OpenInTab(ExtensionsManager.ChromeStoreUrl);
         }
 
         private void OpenExtDirButton_Click(object sender, RoutedEventArgs e)
         {
             ExtensionsManager.OpenFolder();
+        }
+
+        // ================= 影子（小号） =================
+
+        private void ShadowToggleButton_Click(object sender, RoutedEventArgs e)
+        {
+            SetShadowSidebar(!shadowSidebarExpanded);
+        }
+
+        private void SetShadowSidebar(bool expanded)
+        {
+            shadowSidebarExpanded = expanded;
+            ShadowSidebarColumn.Width = new GridLength(expanded ? 220 : 40);
+            ShadowContent.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+            if (expanded)
+            {
+                RenderShadowList();
+            }
+        }
+
+        /// <summary>导航到某个网站后检查：若有影子则自动展开右侧边栏。</summary>
+        private void CheckShadowAutoExpand()
+        {
+            var h = CurrentHost;
+            var addr = h != null ? h.Address : string.Empty;
+            if (string.IsNullOrEmpty(addr) || addr == "about:blank")
+            {
+                return;
+            }
+            if (ShadowManager.HasShadowForHost(addr) && !shadowSidebarExpanded)
+            {
+                SetShadowSidebar(true);
+            }
+            else if (shadowSidebarExpanded)
+            {
+                RenderShadowList();
+            }
+        }
+
+        private void AddShadowButton_Click(object sender, RoutedEventArgs e)
+        {
+            var h = CurrentHost;
+            if (h == null || string.IsNullOrEmpty(h.Address) || h.Address == "about:blank")
+            {
+                SetStatus("请先打开一个网页再添加影子");
+                return;
+            }
+
+            var win = new ShadowWindow { Owner = this };
+            if (win.ShowDialog() == true)
+            {
+                var shadow = ShadowManager.Add(win.ShadowName, h.Address, h.Address);
+                RenderShadowList();
+                SetStatus("已添加影子：" + shadow.Name);
+                OpenShadow(shadow);
+            }
+        }
+
+        private void RenderShadowList()
+        {
+            ShadowList.Children.Clear();
+            var h = CurrentHost;
+            var host = h != null ? h.Address : string.Empty;
+            var shadows = ShadowManager.GetForHost(host);
+            ShadowListTitle.Text = shadows.Count > 0
+                ? "已添加的影子（" + shadows.Count + "）"
+                : "当前网站暂无影子";
+
+            foreach (var sh in shadows)
+            {
+                var grid = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var openBtn = new Button
+                {
+                    Content = sh.Name,
+                    Tag = sh.Id,
+                    Height = 32,
+                    FontSize = 12,
+                    ToolTip = sh.Url
+                };
+                openBtn.Click += ShadowOpen_Click;
+                Grid.SetColumn(openBtn, 0);
+                grid.Children.Add(openBtn);
+
+                var delBtn = new Button
+                {
+                    Content = "\uE74D",
+                    FontFamily = (FontFamily)FindResource("IconFont"),
+                    Tag = sh.Id,
+                    Width = 28,
+                    Height = 28,
+                    Margin = new Thickness(4, 0, 0, 0),
+                    FontSize = 11,
+                    ToolTip = "删除影子"
+                };
+                delBtn.Click += ShadowDelete_Click;
+                Grid.SetColumn(delBtn, 1);
+                grid.Children.Add(delBtn);
+
+                ShadowList.Children.Add(grid);
+            }
+        }
+
+        private void ShadowOpen_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string id)
+            {
+                var sh = ShadowManager.Items.FirstOrDefault(x => x.Id == id);
+                if (sh != null)
+                {
+                    OpenShadow(sh);
+                }
+            }
+        }
+
+        private void ShadowDelete_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is Button btn) || !(btn.Tag is string id))
+            {
+                return;
+            }
+            var confirm = MessageBox.Show("删除该影子及其数据？此操作不可恢复。",
+                "页游++", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm == MessageBoxResult.Yes)
+            {
+                ShadowManager.Remove(id);
+                RenderShadowList();
+                SetStatus("已删除影子");
+            }
+        }
+
+        /// <summary>在新标签页中打开影子（独立 RequestContext，cookie/缓存隔离）。</summary>
+        private void OpenShadow(ShadowItem sh)
+        {
+            var context = ShadowManager.GetContext(sh.Id);
+            var idx = CreateTab(context);
+            activeTabIndex = idx;
+            ApplyActiveTab();
+            ShowView("browser");
+            NavigateOnTab(idx, sh.Url);
         }
 
         // ================= 设置 =================
@@ -897,7 +1079,7 @@ namespace YeyouPlusPlus
             try
             {
                 Directory.CreateDirectory(newPath);
-                foreach (var f in new[] { "favorites.json", "quicklinks.json", "zoom.json" })
+                foreach (var f in new[] { "favorites.json", "quicklinks.json", "zoom.json", "shadows.json" })
                 {
                     var src = Path.Combine(oldDir, f);
                     if (File.Exists(src))
@@ -908,6 +1090,7 @@ namespace YeyouPlusPlus
                 CopyDir(Path.Combine(oldDir, "icons"), Path.Combine(newPath, "icons"));
                 CopyDir(Path.Combine(oldDir, "downloads"), Path.Combine(newPath, "downloads"));
                 CopyDir(Path.Combine(oldDir, "extensions"), Path.Combine(newPath, "extensions"));
+                CopyDir(Path.Combine(oldDir, "profiles"), Path.Combine(newPath, "profiles"));
 
                 AppSettingsStore.Current.DataDirPath = newPath;
                 AppSettingsStore.Save();
@@ -915,6 +1098,7 @@ namespace YeyouPlusPlus
 
                 QuickLinks.Reload();
                 Favorites.Reload();
+                ShadowManager.Reload();
                 RenderQuickLinks();
                 RefreshSettingsView();
                 SetStatus("数据存储路径已更新");
@@ -1175,6 +1359,7 @@ namespace YeyouPlusPlus
             speedTimer?.Stop();
             cacheTimer?.Stop();
             titleTimer?.Stop();
+            zoomDebounce?.Stop();
             tray?.Dispose();
             foreach (var tab in tabs)
             {
