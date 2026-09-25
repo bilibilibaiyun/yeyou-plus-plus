@@ -7,7 +7,7 @@ using System.Linq;
 
 namespace YeyouPlusPlus
 {
-    /// <summary>一个「影子」（小号）：同一网站的一套独立 cookie / 缓存，可长期保存。</summary>
+    /// <summary>一个「影子」：同一网站的一套独立 cookie / 缓存，可长期保存。</summary>
     public class ShadowItem
     {
         public string Id { get; set; }
@@ -18,7 +18,7 @@ namespace YeyouPlusPlus
     }
 
     /// <summary>
-    /// 影子（小号）管理：每个影子对应一个独立的 CEF RequestContext（独立缓存目录），
+    /// 影子管理：每个影子对应一个独立的 CEF RequestContext（独立缓存目录），
     /// 从而实现 cookie / 缓存 / localStorage 与原浏览完全隔离，且长期持久化。
     /// </summary>
     public static class ShadowManager

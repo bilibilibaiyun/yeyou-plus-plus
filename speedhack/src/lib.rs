@@ -12,7 +12,8 @@ use winapi::um::handleapi::CloseHandle;
 use winapi::um::libloaderapi::{GetModuleHandleW, GetProcAddress};
 use winapi::um::memoryapi::{MapViewOfFile, OpenFileMappingW, FILE_MAP_READ};
 use winapi::um::profileapi::{QueryPerformanceCounter, QueryPerformanceFrequency};
-use winapi::um::sysinfoapi::{GetTickCount, GetTickCount64};
+use winapi::um::synchapi::{Sleep, SleepEx};
+use winapi::um::sysinfoapi::{GetSystemTimeAsFileTime, GetTickCount, GetTickCount64};
 use winapi::um::timeapi::timeGetTime;
 use winapi::um::winnt::HANDLE;
 
@@ -117,6 +118,7 @@ static SCALER_QPC: Mutex<TimeScaler> = Mutex::new(TimeScaler::new());
 static SCALER_GTC: Mutex<TimeScaler> = Mutex::new(TimeScaler::new());
 static SCALER_GTC64: Mutex<TimeScaler> = Mutex::new(TimeScaler::new());
 static SCALER_TGT: Mutex<TimeScaler> = Mutex::new(TimeScaler::new());
+static SCALER_GSATFT: Mutex<TimeScaler> = Mutex::new(TimeScaler::new());
 
 fn scale_with(scaler: &Mutex<TimeScaler>, real_ms: u64) -> u64 {
     match scaler.try_lock() {
@@ -131,6 +133,9 @@ static ORIG_QPC: AtomicU64 = AtomicU64::new(0);
 static ORIG_GTC: AtomicU64 = AtomicU64::new(0);
 static ORIG_GTC64: AtomicU64 = AtomicU64::new(0);
 static ORIG_TGT: AtomicU64 = AtomicU64::new(0);
+static ORIG_GSATFT: AtomicU64 = AtomicU64::new(0);
+static ORIG_SLEEP: AtomicU64 = AtomicU64::new(0);
+static ORIG_SLEEPEX: AtomicU64 = AtomicU64::new(0);
 
 static FREQ: AtomicU64 = AtomicU64::new(0);
 
@@ -196,6 +201,49 @@ unsafe extern "system" fn hooked_time_get_time() -> u32 {
     }
     let real = (std::mem::transmute::<u64, unsafe extern "system" fn() -> u32>(orig))() as u64;
     scale_with(&SCALER_TGT, real) as u32
+}
+
+unsafe extern "system" fn hooked_get_system_time_as_file_time(out: *mut u64) {
+    let orig = ORIG_GSATFT.load(Ordering::Relaxed);
+    if orig == 0 {
+        GetSystemTimeAsFileTime(out as *mut winapi::shared::minwindef::FILETIME);
+        return;
+    }
+    let mut real: u64 = 0;
+    (std::mem::transmute::<u64, unsafe extern "system" fn(*mut u64)>(orig))(&mut real);
+    // FILETIME = 100ns 单位 → 毫秒缩放 → 转回 100ns。
+    let real_ms = real / 10000;
+    let scaled_ms = scale_with(&SCALER_GSATFT, real_ms);
+    *out = scaled_ms * 10000;
+}
+
+unsafe extern "system" fn hooked_sleep(ms: DWORD) {
+    let orig = ORIG_SLEEP.load(Ordering::Relaxed);
+    if orig == 0 {
+        Sleep(ms);
+        return;
+    }
+    let speed = get_speed();
+    let scaled = if speed > 0.0 && speed.is_finite() && speed > 1.0 {
+        (ms as f64 / speed) as DWORD
+    } else {
+        ms
+    };
+    (std::mem::transmute::<u64, unsafe extern "system" fn(DWORD)>(orig))(scaled);
+}
+
+unsafe extern "system" fn hooked_sleep_ex(ms: DWORD, alertable: BOOL) -> DWORD {
+    let orig = ORIG_SLEEPEX.load(Ordering::Relaxed);
+    if orig == 0 {
+        return SleepEx(ms, alertable);
+    }
+    let speed = get_speed();
+    let scaled = if speed > 0.0 && speed.is_finite() && speed > 1.0 {
+        (ms as f64 / speed) as DWORD
+    } else {
+        ms
+    };
+    (std::mem::transmute::<u64, unsafe extern "system" fn(DWORD, BOOL) -> DWORD>(orig))(scaled, alertable)
 }
 
 // ============ PE 解析：找 IAT 槽位（纯 RVA，内存解析） ============
@@ -383,6 +431,26 @@ unsafe fn install_iat_hooks() -> Result<String, String> {
         if let Some(orig) = patch_iat(slot, hooked_time_get_time as usize) {
             ORIG_TGT.store(orig as u64, Ordering::Relaxed);
             hooked.push("timeGetTime");
+        }
+    }
+    // 副本内计时常用 GetSystemTimeAsFileTime（100ns 时间戳）+ Sleep 等待，
+    // 之前只 hook 三个函数导致「主界面变速有效、进入副本失效」。
+    if let Some(slot) = find_iat_slot(flash_base, "kernel32.dll", "GetSystemTimeAsFileTime") {
+        if let Some(orig) = patch_iat(slot, hooked_get_system_time_as_file_time as usize) {
+            ORIG_GSATFT.store(orig as u64, Ordering::Relaxed);
+            hooked.push("GetSystemTimeAsFileTime");
+        }
+    }
+    if let Some(slot) = find_iat_slot(flash_base, "kernel32.dll", "Sleep") {
+        if let Some(orig) = patch_iat(slot, hooked_sleep as usize) {
+            ORIG_SLEEP.store(orig as u64, Ordering::Relaxed);
+            hooked.push("Sleep");
+        }
+    }
+    if let Some(slot) = find_iat_slot(flash_base, "kernel32.dll", "SleepEx") {
+        if let Some(orig) = patch_iat(slot, hooked_sleep_ex as usize) {
+            ORIG_SLEEPEX.store(orig as u64, Ordering::Relaxed);
+            hooked.push("SleepEx");
         }
     }
     if hooked.is_empty() {

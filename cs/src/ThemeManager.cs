@@ -26,16 +26,16 @@ namespace YeyouPlusPlus
 
         private static readonly ThemeColor[] ThemeColors =
         {
-            new ThemeColor("Theme.WindowBg",     "#F5F6FA", "#1B1B1F"),
-            new ThemeColor("Theme.SidebarBg",    "#EBEDF3", "#141416"),
+            new ThemeColor("Theme.WindowBg",     "#F2F2F7", "#1B1B1F"),
+            new ThemeColor("Theme.SidebarBg",    "#FFFFFF", "#141416"),
             new ThemeColor("Theme.CardBg",       "#FFFFFF", "#26262B"),
-            new ThemeColor("Theme.Accent",       "#3B7BEB", "#2BFF88"),
-            new ThemeColor("Theme.TextPrimary",  "#1A1C24", "#F2F3F7"),
-            new ThemeColor("Theme.TextSecondary","#6A6E7C", "#9AA0AC"),
-            new ThemeColor("Theme.Border",       "#D9DCE3", "#3A3A42"),
-            new ThemeColor("Theme.Hover",        "#E3E6ED", "#32323A"),
-            new ThemeColor("Theme.Danger",       "#E5484D", "#FF5C5C"),
-            new ThemeColor("Theme.TabBarBg",     "#E8EAF0", "#202024"),
+            new ThemeColor("Theme.Accent",       "#007AFF", "#2BFF88"),
+            new ThemeColor("Theme.TextPrimary",  "#1C1C1E", "#F2F3F7"),
+            new ThemeColor("Theme.TextSecondary","#8E8E93", "#9AA0AC"),
+            new ThemeColor("Theme.Border",       "#E5E5EA", "#3A3A42"),
+            new ThemeColor("Theme.Hover",        "#E9E9EE", "#32323A"),
+            new ThemeColor("Theme.Danger",       "#FF3B30", "#FF5C5C"),
+            new ThemeColor("Theme.TabBarBg",     "#F2F2F7", "#202024"),
         };
 
         /// <summary>当前是否为夜间模式。</summary>

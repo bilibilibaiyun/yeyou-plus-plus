@@ -35,7 +35,6 @@ namespace YeyouPlusPlus
         private readonly DispatcherTimer speedTimer;
         private readonly DispatcherTimer cacheTimer;
         private readonly DispatcherTimer titleTimer;
-        private readonly TrayService tray;
         private bool cacheCheckRunning;
         private long lastCacheSize;
         private int frameCount;
@@ -94,9 +93,6 @@ namespace YeyouPlusPlus
 
             // 站点图标下载完成后刷新快捷入口。
             QuickLinks.IconUpdated += OnQuickLinkIconUpdated;
-
-            // 系统托盘。
-            tray = new TrayService(ShowMainFromTray, ExitApp);
 
             // 初始创建一个空标签（启动仍显示主页）。
             CreateTab();
@@ -427,25 +423,6 @@ namespace YeyouPlusPlus
             NavExtensionsButton.HorizontalContentAlignment = align;
             ToggleSidebarButton.Padding = pad;
             ToggleSidebarButton.HorizontalContentAlignment = align;
-        }
-
-        private void ShowMainFromTray()
-        {
-            if (!IsVisible)
-            {
-                Show();
-            }
-            if (WindowState == WindowState.Minimized)
-            {
-                WindowState = WindowState.Maximized;
-            }
-            Activate();
-        }
-
-        private void ExitApp()
-        {
-            tray?.Dispose();
-            Application.Current.Shutdown();
         }
 
         // ================= 浏览器操作 =================
@@ -886,7 +863,7 @@ namespace YeyouPlusPlus
             ExtensionsManager.OpenFolder();
         }
 
-        // ================= 影子（小号） =================
+        // ================= 影子 =================
 
         private void ShadowToggleButton_Click(object sender, RoutedEventArgs e)
         {
@@ -1370,7 +1347,6 @@ namespace YeyouPlusPlus
                 UpdateStatusText.Text = "下载完成，正在启动安装…";
                 if (UpdateChecker.LaunchInstaller(dest))
                 {
-                    tray?.Dispose();
                     Application.Current.Shutdown();
                 }
                 else
@@ -1387,7 +1363,6 @@ namespace YeyouPlusPlus
             cacheTimer?.Stop();
             titleTimer?.Stop();
             zoomDebounce?.Stop();
-            tray?.Dispose();
             foreach (var tab in tabs)
             {
                 tab.Host.Dispose();

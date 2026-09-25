@@ -6,7 +6,7 @@
         Background="{DynamicResource Theme.WindowBg}"
         Foreground="{DynamicResource Theme.TextPrimary}">
     <StackPanel Margin="24,22">
-        <TextBlock Text="为当前网站创建一个影子（小号）" FontSize="14" FontWeight="SemiBold"
+        <TextBlock Text="为当前网站创建一个影子" FontSize="14" FontWeight="SemiBold"
                    Foreground="{DynamicResource Theme.TextPrimary}"/>
         <TextBlock Text="影子拥有独立的登录状态和数据，与原浏览互不影响、长期保存。"
                    FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"

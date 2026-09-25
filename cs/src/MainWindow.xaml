@@ -377,14 +377,14 @@
             <DockPanel>
                 <Button x:Name="ShadowToggleButton" DockPanel.Dock="Top"
                         Style="{StaticResource IconButton}" Click="ShadowToggleButton_Click"
-                        ToolTip="影子（小号）" Margin="0,6,0,4">
+                        ToolTip="影子" Margin="0,6,0,4">
                     <TextBlock x:Name="ShadowToggleIcon" Text="&#xE716;"
                                FontFamily="{StaticResource IconFont}" FontSize="16"
                                HorizontalAlignment="Center"/>
                 </Button>
 
                 <StackPanel x:Name="ShadowContent" Visibility="Collapsed" Margin="10,0,10,10">
-                    <TextBlock Text="影子（小号）" FontSize="13" FontWeight="SemiBold" Margin="0,8,0,6"
+                    <TextBlock Text="影子" FontSize="13" FontWeight="SemiBold" Margin="0,8,0,6"
                                Foreground="{DynamicResource Theme.TextPrimary}"/>
                     <TextBlock Text="同一网站多套独立数据，互不影响、长期保存。" FontSize="11"
                                TextWrapping="Wrap" Margin="0,0,0,10"

@@ -35,7 +35,7 @@ namespace YeyouPlusPlus
         {
 #pragma warning disable CS0618
             // 传 null 用全局 RequestContext（普通浏览），
-            // 传独立 context 则实现影子（小号）的 cookie/缓存隔离。
+            // 传独立 context 则实现影子的 cookie/缓存隔离。
             browser = requestContext == null
                 ? new ChromiumWebBrowser(initialUrl)
                 : new ChromiumWebBrowser(initialUrl, requestContext);

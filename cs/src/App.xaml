@@ -4,16 +4,16 @@
              StartupUri="MainWindow.xaml">
     <Application.Resources>
         <!-- 浅色主题色板（macOS/Edge 风格：扁平、大圆角、无阴影） -->
-        <SolidColorBrush x:Key="Theme.WindowBg" Color="#F5F6FA"/>
-        <SolidColorBrush x:Key="Theme.SidebarBg" Color="#EBEDF3"/>
+        <SolidColorBrush x:Key="Theme.WindowBg" Color="#F2F2F7"/>
+        <SolidColorBrush x:Key="Theme.SidebarBg" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="Theme.CardBg" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="Theme.Accent" Color="#3B7BEB"/>
-        <SolidColorBrush x:Key="Theme.TextPrimary" Color="#1A1C24"/>
-        <SolidColorBrush x:Key="Theme.TextSecondary" Color="#6A6E7C"/>
-        <SolidColorBrush x:Key="Theme.Border" Color="#D9DCE3"/>
-        <SolidColorBrush x:Key="Theme.Hover" Color="#E3E6ED"/>
-        <SolidColorBrush x:Key="Theme.Danger" Color="#E5484D"/>
-        <SolidColorBrush x:Key="Theme.TabBarBg" Color="#E8EAF0"/>
+        <SolidColorBrush x:Key="Theme.Accent" Color="#007AFF"/>
+        <SolidColorBrush x:Key="Theme.TextPrimary" Color="#1C1C1E"/>
+        <SolidColorBrush x:Key="Theme.TextSecondary" Color="#8E8E93"/>
+        <SolidColorBrush x:Key="Theme.Border" Color="#E5E5EA"/>
+        <SolidColorBrush x:Key="Theme.Hover" Color="#E9E9EE"/>
+        <SolidColorBrush x:Key="Theme.Danger" Color="#FF3B30"/>
+        <SolidColorBrush x:Key="Theme.TabBarBg" Color="#F2F2F7"/>
 
         <!-- 统一图标字体（Windows 10 自带） -->
         <FontFamily x:Key="IconFont">Segoe MDL2 Assets</FontFamily>
@@ -43,7 +43,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 SnapsToDevicePixels="True">
                             <ContentPresenter x:Name="ContentHost"
                                               HorizontalAlignment="Center"
@@ -92,7 +92,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 SnapsToDevicePixels="True">
                             <ContentPresenter x:Name="ContentHost"
                                               HorizontalAlignment="Center"
@@ -102,12 +102,12 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#2F6FD6"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#2F6FD6"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#0071E3"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#0071E3"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#2A62BC"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#2A62BC"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#0062CC"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#0062CC"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
@@ -133,7 +133,7 @@
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Bd"
                                 Background="{TemplateBinding Background}"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                               VerticalAlignment="Center"/>
@@ -168,7 +168,7 @@
                     <ControlTemplate TargetType="ToggleButton">
                         <Border x:Name="Bd"
                                 Background="{TemplateBinding Background}"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter VerticalAlignment="Center"/>
                         </Border>
@@ -204,7 +204,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 SnapsToDevicePixels="True">
                             <ScrollViewer x:Name="PART_ContentHost"
                                           Focusable="False"
@@ -255,7 +255,7 @@
                                                 Background="{TemplateBinding Background}"
                                                 BorderBrush="{TemplateBinding BorderBrush}"
                                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                                CornerRadius="8"/>
+                                                CornerRadius="10"/>
                                         <ControlTemplate.Triggers>
                                             <Trigger Property="IsMouseOver" Value="True">
                                                 <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Theme.Accent}"/>
@@ -285,7 +285,7 @@
                                 <Border Background="{DynamicResource Theme.CardBg}"
                                         BorderBrush="{DynamicResource Theme.Border}"
                                         BorderThickness="1"
-                                        CornerRadius="8"
+                                        CornerRadius="10"
                                         Margin="0,4,0,0"
                                         MinWidth="{TemplateBinding ActualWidth}">
                                     <ScrollViewer MaxHeight="260" VerticalScrollBarVisibility="Auto">
@@ -316,7 +316,7 @@
                     <ControlTemplate TargetType="ComboBoxItem">
                         <Border x:Name="Bd"
                                 Background="{TemplateBinding Background}"
-                                CornerRadius="6"
+                                CornerRadius="8"
                                 Padding="{TemplateBinding Padding}"
                                 Margin="4,1">
                             <ContentPresenter/>
@@ -355,7 +355,7 @@
                     <ControlTemplate TargetType="ListBoxItem">
                         <Border x:Name="Bd"
                                 Background="{TemplateBinding Background}"
-                                CornerRadius="6"
+                                CornerRadius="8"
                                 Padding="{TemplateBinding Padding}"
                                 Margin="1">
                             <ContentPresenter/>

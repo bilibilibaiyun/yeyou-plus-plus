@@ -73,7 +73,7 @@ namespace YeyouPlusPlus
                 BrowserSubprocessPath = Path.Combine(baseDir, "CefSharp.BrowserSubprocess.exe"),
             };
 
-            // 影子（小号）功能依赖：所有 profile 缓存目录的公共根目录。
+            // 影子功能依赖：所有 profile 缓存目录的公共根目录。
             // 全局 CachePath 与各影子的 RequestContextSettings.CachePath 都必须是其子目录。
             settings.RootCachePath = AppPaths.ProfilesRoot;
 
