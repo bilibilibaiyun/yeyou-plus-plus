@@ -37,8 +37,8 @@ Name: "chinesesimplified"; MessagesFile: "D:\Codex\Languages\ChineseSimplified.i
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; 主程序与 CEF 运行库（整个 release 输出目录）
-Source: "..\cs\src\bin\x64\Release\net462\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; 主程序与 CEF 运行库（整个 release 输出目录，排除调试符号/日志/文档）
+Source: "..\cs\src\bin\x64\Release\net462\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.log,*.xml"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
