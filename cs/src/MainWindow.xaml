@@ -18,7 +18,6 @@
                 Background="{DynamicResource Theme.SidebarBg}"
                 BorderBrush="{DynamicResource Theme.Border}" BorderThickness="0,0,1,0">
             <DockPanel>
-                <!-- 顶部标识 -->
                 <StackPanel x:Name="SidebarHeader" DockPanel.Dock="Top"
                             Orientation="Horizontal" Margin="14,14,8,12">
                     <Image Width="26" Height="26" Source="pack://siteoforigin:,,,/Assets/app-64.png"/>
@@ -27,7 +26,6 @@
                                Foreground="{DynamicResource Theme.TextPrimary}"/>
                 </StackPanel>
 
-                <!-- 底部收拢/展开按钮 -->
                 <Button x:Name="ToggleSidebarButton" DockPanel.Dock="Bottom"
                         Style="{StaticResource SidebarButton}" Click="ToggleSidebarButton_Click"
                         ToolTip="收拢 / 展开侧边栏" Margin="8,4,8,10">
@@ -39,7 +37,6 @@
                     </StackPanel>
                 </Button>
 
-                <!-- 导航 -->
                 <StackPanel Margin="8,2,8,0">
                     <Button x:Name="NavHomeButton" Style="{StaticResource SidebarButton}"
                             Click="NavHome_Click" ToolTip="主页">
@@ -59,7 +56,6 @@
                                 <TextBlock x:Name="NavSettingsText" Text="设置" Margin="9,0,0,0"/>
                             </StackPanel>
                         </Button>
-                        <!-- 新稳定版提示小红点 -->
                         <Ellipse x:Name="UpdateBadge" Width="9" Height="9"
                                  Fill="{DynamicResource Theme.Danger}"
                                  Stroke="White" StrokeThickness="1.5"
@@ -67,6 +63,15 @@
                                  Margin="0,3,10,0" Visibility="Collapsed"
                                  ToolTip="发现新的稳定版本"/>
                     </Grid>
+
+                    <Button x:Name="NavExtensionsButton" Style="{StaticResource SidebarButton}"
+                            Click="NavExtensions_Click" ToolTip="扩展">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE71D;" FontFamily="{StaticResource IconFont}"
+                                       FontSize="15" Width="22" TextAlignment="Center"/>
+                            <TextBlock x:Name="NavExtensionsText" Text="扩展" Margin="9,0,0,0"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -78,7 +83,7 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- 『 主页 』-->
+            <!-- 『主页』 -->
             <Grid x:Name="HomePanel" Grid.Row="0">
                 <Viewbox x:Name="HomeViewbox" Stretch="Uniform"
                          MaxWidth="860" MaxHeight="540"
@@ -91,16 +96,10 @@
                                    HorizontalAlignment="Center" Margin="0,10,0,34"
                                    Foreground="{DynamicResource Theme.TextSecondary}"/>
 
-                        <!-- 搜索框（带阴影，与下方卡片按钮一致） -->
                         <Grid Width="620" HorizontalAlignment="Center">
                             <TextBox x:Name="HomeSearchBox" Height="52" FontSize="16"
                                      Padding="18,0" KeyDown="HomeSearchBox_KeyDown"
-                                     TextChanged="HomeSearchBox_TextChanged">
-                                <TextBox.Effect>
-                                    <DropShadowEffect BlurRadius="14" ShadowDepth="2" Direction="270"
-                                                      Color="#26000000" Opacity="1"/>
-                                </TextBox.Effect>
-                            </TextBox>
+                                     TextChanged="HomeSearchBox_TextChanged"/>
                             <TextBlock x:Name="HomeSearchHint" Text="搜索或输入网址" FontSize="16"
                                        Foreground="{DynamicResource Theme.TextSecondary}"
                                        VerticalAlignment="Center" Margin="19,0,0,0"
@@ -111,21 +110,38 @@
                                        Margin="0,0,18,0" IsHitTestVisible="False"/>
                         </Grid>
 
-                        <!-- 5 个快捷入口 -->
                         <UniformGrid x:Name="QuickLinkPanel" Columns="5" Width="620"
                                      Margin="0,44,0,0" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Viewbox>
             </Grid>
 
-            <!-- 『 浏览器视图 』-->
+            <!-- 『浏览器视图』：标签栏 + 工具栏 + 页面 -->
             <Grid x:Name="BrowserView" Grid.Row="0" Visibility="Collapsed">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <DockPanel Grid.Row="0" Margin="8" LastChildFill="True">
+                <!-- 标签栏 -->
+                <Border Grid.Row="0" Background="{DynamicResource Theme.TabBarBg}"
+                        Padding="8,5,8,5">
+                    <DockPanel LastChildFill="False">
+                        <ScrollViewer DockPanel.Dock="Left"
+                                      HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="TabStrip" Orientation="Horizontal"/>
+                        </ScrollViewer>
+                        <Button x:Name="NewTabButton" DockPanel.Dock="Right"
+                                Style="{StaticResource IconButton}" Content="&#xE710;"
+                                Width="30" Height="26" FontSize="13"
+                                Click="NewTabButton_Click" ToolTip="新建标签页"/>
+                    </DockPanel>
+                </Border>
+
+                <!-- 工具栏 -->
+                <DockPanel Grid.Row="1" Margin="8,6" LastChildFill="True">
                     <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
                         <Button x:Name="BackButton" Style="{StaticResource IconButton}" Content="&#xE72B;"
                                 Margin="0,0,5,0" Click="BackButton_Click" ToolTip="后退"/>
@@ -143,19 +159,15 @@
                     </StackPanel>
 
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                        <!-- 网页缩放 -->
                         <Button x:Name="ZoomButton" Style="{StaticResource IconButton}" Content="&#xE8A3;"
                                 Margin="0,0,5,0" Click="ZoomButton_Click" ToolTip="页面缩放"/>
-                        <!-- 变速 -->
                         <ComboBox x:Name="SpeedCombo" Width="74" Height="32" Margin="0,0,5,0"
                                   VerticalContentAlignment="Center"
                                   SelectionChanged="SpeedCombo_SelectionChanged" ToolTip="游戏变速"/>
-                        <!-- 收藏 -->
                         <Button x:Name="FavoriteButton" Style="{StaticResource IconButton}" Content="&#xE735;"
                                 Margin="0,0,5,0" Click="FavoriteButton_Click" ToolTip="收藏当前页"/>
                         <Button x:Name="FavoritesButton" Style="{StaticResource IconButton}" Content="&#xE700;"
                                 Margin="0,0,5,0" Click="FavoritesButton_Click" ToolTip="收藏夹"/>
-                        <!-- 清缓存 -->
                         <Button x:Name="ClearCacheButton" Style="{StaticResource IconButton}" Content="&#xE74D;"
                                 Click="ClearCacheButton_Click" ToolTip="清理缓存"/>
                     </StackPanel>
@@ -163,12 +175,46 @@
                     <TextBox x:Name="AddressBox" Height="32" Margin="5,0"
                              KeyDown="AddressBox_KeyDown"
                              ToolTip="输入网址或搜索关键词"/>
+
+                    <!-- 缩放滑块浮层 -->
+                    <Popup x:Name="ZoomPopup"
+                           PlacementTarget="{Binding ElementName=ZoomButton}"
+                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                        <Border Background="{DynamicResource Theme.CardBg}"
+                                BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
+                                CornerRadius="10" Padding="14,12" Margin="0,4,0,0" Width="260">
+                            <StackPanel>
+                                <Grid>
+                                    <TextBlock Text="页面缩放" FontSize="12"
+                                               Foreground="{DynamicResource Theme.TextSecondary}"/>
+                                    <TextBlock x:Name="ZoomValueText" Text="100%" FontSize="12" FontWeight="SemiBold"
+                                               HorizontalAlignment="Right"
+                                               Foreground="{DynamicResource Theme.Accent}"/>
+                                </Grid>
+                                <Slider x:Name="ZoomSlider" Minimum="50" Maximum="200"
+                                        IsSnapToTickEnabled="False"
+                                        ValueChanged="ZoomSlider_ValueChanged" Margin="0,10,0,0"/>
+                                <Grid Margin="0,6,0,0">
+                                    <TextBlock Text="50%" FontSize="11"
+                                               Foreground="{DynamicResource Theme.TextSecondary}"/>
+                                    <Button x:Name="ZoomResetButton" Content="重置 100%" FontSize="11" Height="22"
+                                            Padding="8,0" HorizontalAlignment="Center"
+                                            Click="ZoomResetButton_Click"/>
+                                    <TextBlock Text="200%" FontSize="11" HorizontalAlignment="Right"
+                                               Foreground="{DynamicResource Theme.TextSecondary}"/>
+                                </Grid>
+                                <TextBlock Text="缩放会按网站自动记住" FontSize="11" Margin="0,8,0,0"
+                                           Foreground="{DynamicResource Theme.TextSecondary}"/>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
                 </DockPanel>
 
-                <Grid x:Name="BrowserContainer" Grid.Row="1"/>
+                <!-- 页面容器（所有标签的浏览器都在这里，靠可见性切换） -->
+                <Grid x:Name="BrowserContainer" Grid.Row="2"/>
             </Grid>
 
-            <!-- 『 设置视图 』-->
+            <!-- 『设置』 -->
             <ScrollViewer x:Name="SettingsPanel" Grid.Row="0" Visibility="Collapsed"
                           VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel MaxWidth="660" Margin="30,24" HorizontalAlignment="Left">
@@ -176,7 +222,6 @@
                     <TextBlock Text="设置" FontSize="24" FontWeight="Bold"
                                Foreground="{DynamicResource Theme.TextPrimary}"/>
 
-                    <!-- 存储 -->
                     <TextBlock Text="存储" FontSize="13" FontWeight="SemiBold" Margin="0,20,0,8"
                                Foreground="{DynamicResource Theme.TextSecondary}"/>
                     <Border Style="{StaticResource CardBorder}">
@@ -209,9 +254,8 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- 更新 -->
-                    <TextBlock Text="更新" FontSize="13" FontWeight="SemiBold" Margin="0,20,0,8"
-                               Foreground="{DynamicResource Theme.TextSecondary}"/>
+                    <TextBlock Text="更新（检查更新仅检测稳定版；版本列表包含全部版本）" FontSize="13" FontWeight="SemiBold"
+                               Margin="0,20,0,8" Foreground="{DynamicResource Theme.TextSecondary}"/>
                     <Border Style="{StaticResource CardBorder}">
                         <StackPanel>
                             <Grid>
@@ -233,17 +277,17 @@
                             <TextBlock x:Name="UpdateStatusText" FontSize="12" Margin="0,8,0,0"
                                        TextWrapping="Wrap" Foreground="{DynamicResource Theme.TextSecondary}"/>
 
-                            <TextBlock Text="可用版本（选择后覆盖安装，配置与数据保留）" FontSize="13"
+                            <TextBlock Text="可用版本（含测试版；选择后覆盖安装，配置与数据保留）" FontSize="13"
                                        Margin="0,16,0,6" Foreground="{DynamicResource Theme.TextSecondary}"/>
                             <ListBox x:Name="ReleaseList" MaxHeight="190"
                                      MouseDoubleClick="ReleaseList_MouseDoubleClick"/>
                             <Button x:Name="InstallButton" Content="安装所选版本" Width="130" Height="32"
+                                    Style="{StaticResource PrimaryButton}"
                                     Margin="0,10,0,0" HorizontalAlignment="Right"
                                     Click="InstallButton_Click"/>
                         </StackPanel>
                     </Border>
 
-                    <!-- 关于 -->
                     <TextBlock Text="关于" FontSize="13" FontWeight="SemiBold" Margin="0,20,0,8"
                                Foreground="{DynamicResource Theme.TextSecondary}"/>
                     <Border Style="{StaticResource CardBorder}">
@@ -251,9 +295,7 @@
                             <TextBlock FontSize="13" TextWrapping="Wrap"
                                        Foreground="{DynamicResource Theme.TextPrimary}"
                                        Text="硬件加速：已启用（GPU 合成渲染，无需配置）。"/>
-                            <TextBlock FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"
-                                       Foreground="{DynamicResource Theme.TextSecondary}"/>
-                            <TextBlock x:Name="RepoLinkText" FontSize="12" Margin="0,6,0,0"
+                            <TextBlock x:Name="RepoLinkText" FontSize="12" Margin="0,8,0,0"
                                        Foreground="{DynamicResource Theme.Accent}" Cursor="Hand"
                                        MouseLeftButtonUp="RepoLink_Click"
                                        Text="项目仓库：github.com/bilibilibaiyun/yeyou-plus-plus"/>
@@ -262,7 +304,56 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- 『 状态栏 』-->
+            <!-- 『扩展』 -->
+            <ScrollViewer x:Name="ExtensionsPanel" Grid.Row="0" Visibility="Collapsed"
+                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel MaxWidth="660" Margin="30,24" HorizontalAlignment="Left">
+
+                    <TextBlock Text="扩展" FontSize="24" FontWeight="Bold"
+                               Foreground="{DynamicResource Theme.TextPrimary}"/>
+
+                    <TextBlock Text="扩展商店" FontSize="13" FontWeight="SemiBold" Margin="0,20,0,8"
+                               Foreground="{DynamicResource Theme.TextSecondary}"/>
+                    <Border Style="{StaticResource CardBorder}">
+                        <StackPanel>
+                            <TextBlock FontSize="13" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource Theme.TextPrimary}"
+                                       Text="从应用商店下载扩展安装包（.crx），解压到扩展目录后重启本软件即可生效。"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                <Button Content="Edge 扩展商店" Height="32" Padding="12,0" Margin="0,0,8,0"
+                                        Click="EdgeStoreButton_Click"/>
+                                <Button Content="Chrome 网上应用店" Height="32" Padding="12,0" Margin="0,0,8,0"
+                                        Click="ChromeStoreButton_Click"/>
+                                <Button Content="打开扩展目录" Height="32" Padding="12,0"
+                                        Click="OpenExtDirButton_Click"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="已安装" FontSize="13" FontWeight="SemiBold" Margin="0,20,0,8"
+                               Foreground="{DynamicResource Theme.TextSecondary}"/>
+                    <Border Style="{StaticResource CardBorder}">
+                        <StackPanel>
+                            <ListBox x:Name="ExtensionList" MinHeight="60" MaxHeight="240">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Name}" FontSize="13"/>
+                                            <TextBlock Text="{Binding Version}" FontSize="11" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource Theme.TextSecondary}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock x:Name="ExtensionEmptyText" Text="尚未安装扩展" FontSize="12"
+                                       Margin="2,6,0,0" Foreground="{DynamicResource Theme.TextSecondary}"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- 状态栏 -->
             <Border Grid.Row="1" Background="{DynamicResource Theme.CardBg}"
                     BorderBrush="{DynamicResource Theme.Border}" BorderThickness="0,1,0,0"
                     Padding="12,4">

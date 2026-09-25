@@ -83,6 +83,13 @@ namespace YeyouPlusPlus
                     {
                         continue;
                     }
+                    // 关键：只在 pepflashplayer.dll 已加载的进程里注入。
+                    // 否则 DLL 注入后 Flash 尚未就绪，会因等待超时而永久错过 hook
+                    // （表现为进入副本后变速失效）。
+                    if (!HasFlashModule(proc.Id))
+                    {
+                        continue;
+                    }
                     if (Inject(proc.Id, DllPath))
                     {
                         _injectedPids.Add(proc.Id);
@@ -101,6 +108,64 @@ namespace YeyouPlusPlus
 
         private static readonly System.Collections.Generic.HashSet<int> _injectedPids
             = new System.Collections.Generic.HashSet<int>();
+
+        /// <summary>判断进程是否已加载 pepflashplayer.dll（Toolhelp32 枚举模块）。</summary>
+        private static bool HasFlashModule(int pid)
+        {
+            const uint TH32CS_SNAPMODULE = 0x00000008;
+            IntPtr snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, (uint)pid);
+            if (snap == IntPtr.Zero || snap == (IntPtr)(-1))
+            {
+                return false;
+            }
+            try
+            {
+                var me = new MODULEENTRY32 { dwSize = (uint)Marshal.SizeOf(typeof(MODULEENTRY32)) };
+                if (!Module32First(snap, ref me))
+                {
+                    return false;
+                }
+                do
+                {
+                    if (me.szModule != null &&
+                        me.szModule.IndexOf("pepflashplayer", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        return true;
+                    }
+                } while (Module32Next(snap, ref me));
+                return false;
+            }
+            finally
+            {
+                CloseHandle(snap);
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct MODULEENTRY32
+        {
+            public uint dwSize;
+            public uint th32ModuleID;
+            public uint th32ProcessID;
+            public uint GlblcntUsage;
+            public uint ProccntUsage;
+            public IntPtr modBaseAddr;
+            public uint modBaseSize;
+            public IntPtr hModule;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string szModule;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+            public string szExePath;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool Module32First(IntPtr hSnapshot, ref MODULEENTRY32 lpme);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool Module32Next(IntPtr hSnapshot, ref MODULEENTRY32 lpme);
 
         private static bool Inject(int pid, string dllPath)
         {

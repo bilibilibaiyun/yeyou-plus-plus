@@ -38,6 +38,12 @@ namespace YeyouPlusPlus
             items.AddRange(fresh);
         }
 
+        /// <summary>判断某 URL 是否已收藏。</summary>
+        public static bool Contains(string url)
+        {
+            return !string.IsNullOrWhiteSpace(url) && items.Exists(f => f.Url == url);
+        }
+
         public static void Add(string url, string name)
         {
             if (string.IsNullOrWhiteSpace(url))

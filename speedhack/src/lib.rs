@@ -401,8 +401,10 @@ pub extern "system" fn DllMain(_hinst: *mut core::ffi::c_void, reason: DWORD, _r
         if INIT_DONE.swap(1, Ordering::SeqCst) == 0 {
             std::thread::spawn(|| unsafe {
                 // 等 Flash 模块加载完成（ppapi 进程加载 pepflashplayer 后再 hook）。
+                // 等待时间放宽到 5 分钟：进入副本时 Flash 插件进程可能较慢创建/加载，
+                // 过早放弃会永久错过 hook（表现为变速失效）。
                 let mut flash_found = false;
-                for _ in 0..100 {
+                for _ in 0..3000 {
                     if find_flash_module().is_some() {
                         flash_found = true;
                         break;

@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-        <!-- 白云歌同款浅色主题色板 -->
+        <!-- 浅色主题色板（macOS/Edge 风格：扁平、大圆角、无阴影） -->
         <SolidColorBrush x:Key="Theme.WindowBg" Color="#F5F6FA"/>
         <SolidColorBrush x:Key="Theme.SidebarBg" Color="#EBEDF3"/>
         <SolidColorBrush x:Key="Theme.CardBg" Color="#FFFFFF"/>
@@ -13,26 +13,21 @@
         <SolidColorBrush x:Key="Theme.Border" Color="#D9DCE3"/>
         <SolidColorBrush x:Key="Theme.Hover" Color="#E3E6ED"/>
         <SolidColorBrush x:Key="Theme.Danger" Color="#E5484D"/>
+        <SolidColorBrush x:Key="Theme.TabBarBg" Color="#E8EAF0"/>
 
         <!-- 统一图标字体（Windows 10 自带） -->
         <FontFamily x:Key="IconFont">Segoe MDL2 Assets</FontFamily>
 
-        <!-- 卡片容器样式 -->
+        <!-- 卡片容器 -->
         <Style x:Key="CardBorder" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource Theme.CardBg}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="CornerRadius" Value="12"/>
             <Setter Property="Padding" Value="16,14"/>
-            <Setter Property="Effect">
-                <Setter.Value>
-                    <DropShadowEffect BlurRadius="10" ShadowDepth="1" Direction="270"
-                                      Color="#1A000000" Opacity="1"/>
-                </Setter.Value>
-            </Setter>
         </Style>
 
-        <!-- 全局按钮：卡片式（白底 + 细边框 + 轻投影）、圆角 8px、悬停/按下反馈 -->
+        <!-- 全局按钮：扁平圆角，无阴影 -->
         <Style TargetType="Button">
             <Setter Property="Background" Value="{DynamicResource Theme.CardBg}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}"/>
@@ -41,7 +36,6 @@
             <Setter Property="Padding" Value="12,6"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -51,10 +45,6 @@
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="8"
                                 SnapsToDevicePixels="True">
-                            <Border.Effect>
-                                <DropShadowEffect BlurRadius="8" ShadowDepth="1" Direction="270"
-                                                  Color="#26000000" Opacity="1"/>
-                            </Border.Effect>
                             <ContentPresenter x:Name="ContentHost"
                                               HorizontalAlignment="Center"
                                               VerticalAlignment="Center"
@@ -64,7 +54,7 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Theme.Hover}"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Theme.Accent}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Theme.Border}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Theme.Accent}"/>
@@ -80,7 +70,7 @@
             </Setter>
         </Style>
 
-        <!-- 图标按钮：统一尺寸与图标渲染（内容用 MDL2 图标字符） -->
+        <!-- 图标按钮：统一尺寸与图标渲染 -->
         <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Width" Value="38"/>
             <Setter Property="Height" Value="32"/>
@@ -104,10 +94,6 @@
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="8"
                                 SnapsToDevicePixels="True">
-                            <Border.Effect>
-                                <DropShadowEffect BlurRadius="8" ShadowDepth="1" Direction="270"
-                                                  Color="#333B7BEB" Opacity="1"/>
-                            </Border.Effect>
                             <ContentPresenter x:Name="ContentHost"
                                               HorizontalAlignment="Center"
                                               VerticalAlignment="Center"
@@ -132,7 +118,7 @@
             </Setter>
         </Style>
 
-        <!-- 侧边栏导航按钮：透明底、圆角、悬停/选中反馈 -->
+        <!-- 侧边栏导航按钮 -->
         <Style x:Key="SidebarButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource Theme.TextSecondary}"/>
@@ -162,8 +148,8 @@
                                 <Setter Property="Foreground" Value="White"/>
                             </Trigger>
                             <Trigger Property="Tag" Value="selected">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Theme.Accent}"/>
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Theme.CardBg}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimary}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -171,13 +157,42 @@
             </Setter>
         </Style>
 
-        <!-- 全局文本框：圆角 8px、聚焦蓝色描边 -->
+        <!-- 浏览器标签（Edge 风）：激活白底、非激活透明 -->
+        <Style x:Key="TabButton" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource Theme.TextSecondary}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Theme.Hover}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Theme.CardBg}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimary}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 全局文本框：修复文字垂直居中（PART_ContentHost 绑定 VerticalContentAlignment） -->
         <Style TargetType="TextBox">
             <Setter Property="Background" Value="{DynamicResource Theme.CardBg}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}"/>
             <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimary}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="Padding" Value="8,0"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="CaretBrush" Value="{DynamicResource Theme.Accent}"/>
             <Setter Property="SelectionBrush" Value="{DynamicResource Theme.Accent}"/>
@@ -194,6 +209,7 @@
                             <ScrollViewer x:Name="PART_ContentHost"
                                           Focusable="False"
                                           Margin="{TemplateBinding Padding}"
+                                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
                                           HorizontalScrollBarVisibility="Hidden"
                                           VerticalScrollBarVisibility="Hidden"/>
                         </Border>
@@ -213,7 +229,7 @@
             </Setter>
         </Style>
 
-        <!-- 下拉框：与按钮同风格（圆角、白底、悬停强调描边） -->
+        <!-- 下拉框：扁平圆角 -->
         <Style TargetType="ComboBox">
             <Setter Property="Background" Value="{DynamicResource Theme.CardBg}"/>
             <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimary}"/>
@@ -272,10 +288,6 @@
                                         CornerRadius="8"
                                         Margin="0,4,0,0"
                                         MinWidth="{TemplateBinding ActualWidth}">
-                                    <Border.Effect>
-                                        <DropShadowEffect BlurRadius="12" ShadowDepth="2" Direction="270"
-                                                          Color="#26000000" Opacity="1"/>
-                                    </Border.Effect>
                                     <ScrollViewer MaxHeight="260" VerticalScrollBarVisibility="Auto">
                                         <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/>
                                     </ScrollViewer>
@@ -323,7 +335,7 @@
             </Setter>
         </Style>
 
-        <!-- 列表框（设置-版本列表 / 收藏夹）：去默认蓝框、圆角 -->
+        <!-- 列表框 -->
         <Style TargetType="ListBox">
             <Setter Property="Background" Value="{DynamicResource Theme.WindowBg}"/>
             <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimary}"/>
@@ -356,6 +368,52 @@
                                 <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Theme.Hover}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 滑块（无级缩放）：细轨道 + 圆形拇指 -->
+        <Style TargetType="Slider">
+            <Setter Property="Foreground" Value="{DynamicResource Theme.Accent}"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid VerticalAlignment="Center" Background="Transparent">
+                            <Border Height="4" CornerRadius="2" Background="{DynamicResource Theme.Border}"/>
+                            <Track x:Name="PART_Track">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="Slider.DecreaseLarge" Focusable="False">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Grid Background="Transparent" Height="20"/>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="Slider.IncreaseLarge" Focusable="False">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Grid Background="Transparent" Height="20"/>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Width="18" Height="18" Focusable="False">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Ellipse Fill="{DynamicResource Theme.Accent}"
+                                                         Stroke="White" StrokeThickness="2.5"/>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>

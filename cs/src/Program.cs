@@ -74,6 +74,14 @@ namespace YeyouPlusPlus
             settings.CefCommandLineArgs["disable-features"] = "PreferHtmlOverPlugins";
             // 允许自动播放。
             settings.CefCommandLineArgs["autoplay-policy"] = "no-user-gesture-required";
+
+            // 加载用户安装的浏览器扩展（每个子目录一个解压后的扩展）。
+            var extensionArg = ExtensionsManager.BuildLoadExtensionArg();
+            if (!string.IsNullOrEmpty(extensionArg))
+            {
+                settings.CefCommandLineArgs["load-extension"] = extensionArg;
+            }
+
             // 注意：no-sandbox 参数实测会让 ppapi（Flash）子进程启动即崩溃，
             // CefSharp 本身编译时未启用沙盒（CEF sandbox 未链接），无需此参数。
 

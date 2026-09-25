@@ -19,7 +19,17 @@ namespace YeyouPlusPlus
         private const long CacheWarningBytes = 400L * 1024 * 1024; // 400MB 临界值
         private const long CacheDangerBytes = 800L * 1024 * 1024;  // 800MB 危险值
 
-        private readonly BrowserHost browser;
+        /// <summary>一个浏览器标签页。</summary>
+        private class BrowserTab
+        {
+            public BrowserHost Host;
+            public string Title;
+            public bool HasNavigated; // 是否已真正导航过（非 about:blank）
+        }
+
+        private readonly List<BrowserTab> tabs = new List<BrowserTab>();
+        private int activeTabIndex = -1;
+
         private readonly DispatcherTimer speedTimer;
         private readonly DispatcherTimer cacheTimer;
         private readonly DispatcherTimer titleTimer;
@@ -29,18 +39,18 @@ namespace YeyouPlusPlus
         private int frameCount;
         private int fps;
         private bool sidebarCollapsed;
+        private bool updatingZoomUi;
         private List<ReleaseInfo> releases;
+
+        /// <summary>当前激活标签的浏览器宿主。</summary>
+        private BrowserHost CurrentHost
+        {
+            get { return activeTabIndex >= 0 && activeTabIndex < tabs.Count ? tabs[activeTabIndex].Host : null; }
+        }
 
         public MainWindow()
         {
             InitializeComponent();
-
-            // 创建浏览器宿主，初始为空白页（不加载任何网页）。
-            browser = new BrowserHost("about:blank");
-            BrowserContainer.Children.Add(browser);
-            browser.AddressChanged += (s, e) => AddressBox.Text = browser.Address;
-            // 窗口标题不显示网页名称（固定显示 帧率 + 缓存量）。
-            browser.LoadingStateChanged += (s, e) => UpdateNavButtons();
 
             // 初始化倍速下拉。
             SpeedCombo.ItemsSource = new[] { "0.5x", "1x", "1.5x", "2x", "3x", "5x" };
@@ -74,6 +84,10 @@ namespace YeyouPlusPlus
             // 系统托盘。
             tray = new TrayService(ShowMainFromTray, ExitApp);
 
+            // 初始创建一个空标签（启动仍显示主页）。
+            CreateTab();
+            activeTabIndex = 0;
+
             RenderQuickLinks();
             RefreshSettingsView();
 
@@ -88,6 +102,218 @@ namespace YeyouPlusPlus
             Title = string.Format("页游++   {0} FPS   ｜   缓存 {1}", fps, FormatBytes(lastCacheSize));
         }
 
+        // ================= 标签系统 =================
+
+        private int CreateTab()
+        {
+            var host = new BrowserHost("about:blank");
+            var tab = new BrowserTab { Host = host };
+
+            host.AddressChanged += (s, e) => Dispatcher.InvokeAsync(() => OnTabAddressChanged(tab));
+            host.TitleChanged += (s, e) => Dispatcher.InvokeAsync(() => OnTabTitleChanged(tab));
+            host.LoadingStateChanged += (s, e) => Dispatcher.InvokeAsync(() => OnTabLoadingStateChanged(tab));
+
+            tabs.Add(tab);
+            BrowserContainer.Children.Add(host);
+            return tabs.Count - 1;
+        }
+
+        private void OnTabAddressChanged(BrowserTab tab)
+        {
+            var addr = tab.Host.Address;
+            if (!string.IsNullOrEmpty(addr) && addr != "about:blank")
+            {
+                tab.HasNavigated = true;
+            }
+            if (IsActiveTab(tab))
+            {
+                AddressBox.Text = addr;
+                UpdateNavButtons();
+                UpdateFavoriteButton();
+            }
+        }
+
+        private void OnTabTitleChanged(BrowserTab tab)
+        {
+            tab.Title = tab.Host.Title;
+            RenderTabs();
+        }
+
+        private void OnTabLoadingStateChanged(BrowserTab tab)
+        {
+            if (!IsActiveTab(tab))
+            {
+                return;
+            }
+            UpdateNavButtons();
+            if (!tab.Host.IsLoading)
+            {
+                ApplyStoredZoom(tab);
+            }
+        }
+
+        private bool IsActiveTab(BrowserTab tab)
+        {
+            return activeTabIndex >= 0 && activeTabIndex < tabs.Count && tabs[activeTabIndex] == tab;
+        }
+
+        private void SwitchTab(int index)
+        {
+            if (index < 0 || index >= tabs.Count)
+            {
+                return;
+            }
+            activeTabIndex = index;
+            ApplyActiveTab();
+            ShowView("browser");
+        }
+
+        private void ApplyActiveTab()
+        {
+            for (int i = 0; i < tabs.Count; i++)
+            {
+                tabs[i].Host.Visibility = i == activeTabIndex ? Visibility.Visible : Visibility.Collapsed;
+            }
+            RenderTabs();
+            var h = CurrentHost;
+            if (h != null)
+            {
+                AddressBox.Text = h.Address;
+                UpdateNavButtons();
+                UpdateFavoriteButton();
+            }
+        }
+
+        private void CloseTab(int index)
+        {
+            if (index < 0 || index >= tabs.Count)
+            {
+                return;
+            }
+            var host = tabs[index].Host;
+            tabs.RemoveAt(index);
+            BrowserContainer.Children.Remove(host);
+            host.Dispose();
+
+            if (tabs.Count == 0)
+            {
+                activeTabIndex = -1;
+                ShowView("home");
+                return;
+            }
+
+            activeTabIndex = Math.Min(index, tabs.Count - 1);
+            ApplyActiveTab();
+        }
+
+        private void NewTabButton_Click(object sender, RoutedEventArgs e)
+        {
+            activeTabIndex = CreateTab();
+            ApplyActiveTab();
+            ShowView("browser");
+        }
+
+        /// <summary>在标签中打开 URL：复用空白标签，否则新建。</summary>
+        private void OpenInTab(string url)
+        {
+            int idx = -1;
+            for (int i = 0; i < tabs.Count; i++)
+            {
+                if (!tabs[i].HasNavigated && tabs[i].Host.Address == "about:blank")
+                {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx < 0)
+            {
+                idx = CreateTab();
+            }
+            activeTabIndex = idx;
+            ApplyActiveTab();
+            ShowView("browser");
+            NavigateOnTab(idx, url);
+        }
+
+        private void NavigateOnTab(int index, string input)
+        {
+            if (string.IsNullOrWhiteSpace(input) || index < 0 || index >= tabs.Count)
+            {
+                return;
+            }
+            input = input.Trim();
+            string url = IsUrl(input)
+                ? (input.Contains("://") ? input : "http://" + input)
+                : "https://www.bing.com/search?q=" + Uri.EscapeDataString(input);
+            tabs[index].Host.Load(url);
+            tabs[index].HasNavigated = true;
+            if (index == activeTabIndex)
+            {
+                AddressBox.Text = url;
+            }
+        }
+
+        private void RenderTabs()
+        {
+            TabStrip.Children.Clear();
+            for (int i = 0; i < tabs.Count; i++)
+            {
+                int idx = i;
+                var tab = tabs[i];
+                var title = string.IsNullOrWhiteSpace(tab.Title) ? "新标签页" : tab.Title;
+                if (title.Length > 16)
+                {
+                    title = title.Substring(0, 16);
+                }
+
+                var grid = new Grid { Width = 168, MaxWidth = 168 };
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var titleText = new TextBlock
+                {
+                    Text = title,
+                    FontSize = 12,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(10, 0, 2, 0)
+                };
+                Grid.SetColumn(titleText, 0);
+                grid.Children.Add(titleText);
+
+                var closeBtn = new Button
+                {
+                    Content = "\uE711",
+                    FontFamily = (FontFamily)FindResource("IconFont"),
+                    FontSize = 10,
+                    Width = 22,
+                    Height = 22,
+                    Padding = new Thickness(0),
+                    Background = Brushes.Transparent,
+                    BorderThickness = new Thickness(0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 4, 0),
+                    Cursor = Cursors.Hand,
+                    ToolTip = "关闭标签页"
+                };
+                closeBtn.Click += (s, e) => { e.Handled = true; CloseTab(idx); };
+                Grid.SetColumn(closeBtn, 1);
+                grid.Children.Add(closeBtn);
+
+                var tb = new ToggleButton
+                {
+                    Style = (Style)FindResource("TabButton"),
+                    IsChecked = i == activeTabIndex,
+                    Content = grid,
+                    Padding = new Thickness(0, 5, 0, 5),
+                    Margin = new Thickness(0, 0, 4, 4),
+                    Tag = idx
+                };
+                tb.Click += (s, e) => SwitchTab(idx);
+                TabStrip.Children.Add(tb);
+            }
+        }
+
         // ================= 视图切换 =================
 
         private void ShowView(string view)
@@ -95,11 +321,13 @@ namespace YeyouPlusPlus
             HomePanel.Visibility = view == "home" ? Visibility.Visible : Visibility.Collapsed;
             BrowserView.Visibility = view == "browser" ? Visibility.Visible : Visibility.Collapsed;
             SettingsPanel.Visibility = view == "settings" ? Visibility.Visible : Visibility.Collapsed;
+            ExtensionsPanel.Visibility = view == "extensions" ? Visibility.Visible : Visibility.Collapsed;
 
             NavHomeButton.Tag = view == "home" ? "selected" : null;
             NavSettingsButton.Tag = view == "settings" ? "selected" : null;
+            NavExtensionsButton.Tag = view == "extensions" ? "selected" : null;
 
-            // 浏览器视图自动收拢侧边栏（游戏需要大屏），其他视图自动展开。
+            // 浏览器视图自动收拢侧边栏，其他视图自动展开。
             var wantCollapsed = view == "browser";
             if (sidebarCollapsed != wantCollapsed)
             {
@@ -114,10 +342,15 @@ namespace YeyouPlusPlus
             {
                 RefreshSettingsView();
             }
+            if (view == "extensions")
+            {
+                RefreshExtensionsView();
+            }
         }
 
         private void NavHome_Click(object sender, RoutedEventArgs e) => ShowView("home");
         private void NavSettings_Click(object sender, RoutedEventArgs e) => ShowView("settings");
+        private void NavExtensions_Click(object sender, RoutedEventArgs e) => ShowView("extensions");
 
         private void ToggleSidebarButton_Click(object sender, RoutedEventArgs e) => ToggleSidebar();
 
@@ -128,14 +361,17 @@ namespace YeyouPlusPlus
             SidebarHeader.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
             NavHomeText.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
             NavSettingsText.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
+            NavExtensionsText.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
             ToggleSidebarText.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
             ToggleSidebarIcon.Text = sidebarCollapsed ? "\uE76A" : "\uE76B";
             var pad = sidebarCollapsed ? new Thickness(0, 9, 0, 9) : new Thickness(12, 9, 12, 9);
             var align = sidebarCollapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left;
             NavHomeButton.Padding = pad;
             NavSettingsButton.Padding = pad;
+            NavExtensionsButton.Padding = pad;
             NavHomeButton.HorizontalContentAlignment = align;
             NavSettingsButton.HorizontalContentAlignment = align;
+            NavExtensionsButton.HorizontalContentAlignment = align;
             ToggleSidebarButton.Padding = pad;
             ToggleSidebarButton.HorizontalContentAlignment = align;
         }
@@ -159,7 +395,7 @@ namespace YeyouPlusPlus
             Application.Current.Shutdown();
         }
 
-        // ================= 浏览器 =================
+        // ================= 浏览器操作 =================
 
         private void ApplySpeed()
         {
@@ -172,46 +408,14 @@ namespace YeyouPlusPlus
 
         private void UpdateNavButtons()
         {
-            BackButton.IsEnabled = browser.CanGoBack;
-            ForwardButton.IsEnabled = browser.CanGoForward;
+            var h = CurrentHost;
+            BackButton.IsEnabled = h != null && h.CanGoBack;
+            ForwardButton.IsEnabled = h != null && h.CanGoForward;
         }
-
-        /// <summary>从主页面板切换到浏览器视图，并导航到指定内容。</summary>
-        private void ShowBrowser(string input)
-        {
-            if (string.IsNullOrWhiteSpace(input))
-            {
-                return;
-            }
-
-            ShowView("browser");
-            Navigate(input);
-        }
-
-        /// <summary>切回主页面板（不销毁浏览器，避免 CEF 反复初始化）。</summary>
-        private void ShowHome() => ShowView("home");
 
         private void Navigate(string input)
         {
-            if (string.IsNullOrWhiteSpace(input))
-            {
-                return;
-            }
-
-            input = input.Trim();
-            string url;
-
-            if (IsUrl(input))
-            {
-                url = input.Contains("://") ? input : "http://" + input;
-            }
-            else
-            {
-                url = "https://www.bing.com/search?q=" + Uri.EscapeDataString(input);
-            }
-
-            browser.Load(url);
-            AddressBox.Text = url;
+            NavigateOnTab(activeTabIndex, input);
         }
 
         private static bool IsUrl(string s)
@@ -222,7 +426,6 @@ namespace YeyouPlusPlus
             {
                 return true;
             }
-            // 简单判断：含点且无空格，视为网址。
             return s.Contains(".") && !s.Contains(" ") && !s.Contains("　");
         }
 
@@ -230,7 +433,8 @@ namespace YeyouPlusPlus
         {
             if (e.Key == Key.Enter)
             {
-                ShowBrowser(HomeSearchBox.Text);
+                OpenInTab(HomeSearchBox.Text);
+                HomeSearchBox.Text = string.Empty;
             }
         }
 
@@ -249,58 +453,145 @@ namespace YeyouPlusPlus
             }
         }
 
-        private void BackButton_Click(object sender, RoutedEventArgs e) => browser.Back();
-        private void ForwardButton_Click(object sender, RoutedEventArgs e) => browser.Forward();
-        private void ReloadButton_Click(object sender, RoutedEventArgs e) => browser.Reload();
-        private void HomeButton_Click(object sender, RoutedEventArgs e) => ShowHome();
+        private void BackButton_Click(object sender, RoutedEventArgs e) => CurrentHost?.Back();
+        private void ForwardButton_Click(object sender, RoutedEventArgs e) => CurrentHost?.Forward();
+        private void ReloadButton_Click(object sender, RoutedEventArgs e) => CurrentHost?.Reload();
+        private void HomeButton_Click(object sender, RoutedEventArgs e) => ShowView("home");
 
         private void SpeedCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            // 倍速下拉变化：立即应用。
             ApplySpeed();
         }
 
-        // ================= 页面缩放 =================
+        // ================= 页面缩放（滑块无级 + 按站记忆） =================
+
+        private void ApplyStoredZoom(BrowserTab tab)
+        {
+            var addr = tab.Host.Address;
+            if (string.IsNullOrEmpty(addr) || addr == "about:blank")
+            {
+                return;
+            }
+            var percent = ZoomStore.Get(addr);
+            if (Math.Abs(percent - 100) > 0.5)
+            {
+                tab.Host.SetZoomPercent(percent);
+            }
+        }
 
         private void ZoomButton_Click(object sender, RoutedEventArgs e)
         {
-            var menu = new ContextMenu();
-            foreach (var p in new[] { 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200 })
+            var h = CurrentHost;
+            if (h == null)
             {
-                var percent = p;
-                var mi = new MenuItem { Header = percent + "%", FontSize = 13 };
-                mi.Click += (s, ev) => browser.SetZoomPercent(percent);
-                menu.Items.Add(mi);
+                return;
             }
-            menu.PlacementTarget = ZoomButton;
-            menu.Placement = PlacementMode.Bottom;
-            menu.IsOpen = true;
+            var addr = h.Address;
+            var current = string.IsNullOrEmpty(addr) || addr == "about:blank"
+                ? 100
+                : ZoomStore.Get(addr);
+
+            updatingZoomUi = true;
+            ZoomSlider.Value = current;
+            ZoomValueText.Text = ((int)current) + "%";
+            updatingZoomUi = false;
+            ZoomPopup.IsOpen = true;
+        }
+
+        private void ZoomSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            ZoomValueText.Text = ((int)e.NewValue) + "%";
+            if (updatingZoomUi)
+            {
+                return;
+            }
+            var h = CurrentHost;
+            if (h == null)
+            {
+                return;
+            }
+            var percent = e.NewValue;
+            h.SetZoomPercent(percent);
+            var addr = h.Address;
+            if (!string.IsNullOrEmpty(addr) && addr != "about:blank")
+            {
+                ZoomStore.Set(addr, percent);
+            }
+        }
+
+        private void ZoomResetButton_Click(object sender, RoutedEventArgs e)
+        {
+            updatingZoomUi = true;
+            ZoomSlider.Value = 100;
+            updatingZoomUi = false;
+            ZoomValueText.Text = "100%";
+
+            var h = CurrentHost;
+            if (h == null)
+            {
+                return;
+            }
+            h.SetZoomPercent(100);
+            var addr = h.Address;
+            if (!string.IsNullOrEmpty(addr) && addr != "about:blank")
+            {
+                ZoomStore.Set(addr, 100);
+            }
         }
 
         // ================= 收藏 =================
 
-        private void ClearCacheButton_Click(object sender, RoutedEventArgs e)
-        {
-            // 后台清理，完成后回 UI 线程更新提示。
-            CacheManager.ClearCache(() =>
-            {
-                SetStatus("缓存已清理");
-                MessageBox.Show("缓存已清理", "页游++", MessageBoxButton.OK, MessageBoxImage.Information);
-            });
-        }
-
         private void FavoriteButton_Click(object sender, RoutedEventArgs e)
         {
-            Favorites.Add(browser.Address, browser.Title ?? browser.Address);
-            SetStatus("已收藏当前页");
+            var h = CurrentHost;
+            if (h == null)
+            {
+                return;
+            }
+            var url = h.Address;
+            if (string.IsNullOrEmpty(url) || url == "about:blank")
+            {
+                SetStatus("当前页面无法收藏");
+                return;
+            }
+            if (Favorites.Contains(url))
+            {
+                Favorites.Remove(url);
+                SetStatus("已取消收藏");
+            }
+            else
+            {
+                Favorites.Add(url, h.Title ?? url);
+                SetStatus("已收藏");
+            }
+            UpdateFavoriteButton();
+        }
+
+        private void UpdateFavoriteButton()
+        {
+            var h = CurrentHost;
+            var fav = h != null && !string.IsNullOrEmpty(h.Address) && Favorites.Contains(h.Address);
+            FavoriteButton.Content = fav ? "\uE734" : "\uE735"; // 实心/空心星
+            FavoriteButton.Foreground = fav
+                ? (Brush)FindResource("Theme.Accent")
+                : (Brush)FindResource("Theme.TextPrimary");
         }
 
         private void FavoritesButton_Click(object sender, RoutedEventArgs e)
         {
             var win = new FavoritesWindow();
             win.Owner = this;
-            win.NavigateRequested += url => ShowBrowser(url);
+            win.NavigateRequested += url => OpenInTab(url);
             win.ShowDialog();
+        }
+
+        private void ClearCacheButton_Click(object sender, RoutedEventArgs e)
+        {
+            CacheManager.ClearCache(() =>
+            {
+                SetStatus("缓存已清理");
+                MessageBox.Show("缓存已清理", "页游++", MessageBoxButton.OK, MessageBoxImage.Information);
+            });
         }
 
         // ================= 快捷入口 =================
@@ -405,7 +696,6 @@ namespace YeyouPlusPlus
 
                 if (item != null)
                 {
-                    // 已保存槽位支持右键删除。
                     var menu = new ContextMenu();
                     var deleteItem = new MenuItem { Header = "删除", Tag = index, FontSize = 13 };
                     deleteItem.Click += (s, e) =>
@@ -436,7 +726,7 @@ namespace YeyouPlusPlus
             }
             else
             {
-                ShowBrowser(item.Url);
+                OpenInTab(item.Url);
             }
         }
 
@@ -480,7 +770,6 @@ namespace YeyouPlusPlus
         {
             if (size >= CacheDangerBytes)
             {
-                // 后台自动清理，完成后回 UI 线程更新状态栏。
                 CacheManager.ClearCache(() =>
                 {
                     SetStatus("缓存已超过 " + FormatBytes(CacheDangerBytes) + "，已自动清理");
@@ -512,6 +801,30 @@ namespace YeyouPlusPlus
         private void SetStatus(string text)
         {
             StatusText.Text = text ?? string.Empty;
+        }
+
+        // ================= 扩展 =================
+
+        private void RefreshExtensionsView()
+        {
+            var list = ExtensionsManager.GetInstalled();
+            ExtensionList.ItemsSource = list;
+            ExtensionEmptyText.Visibility = list.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void EdgeStoreButton_Click(object sender, RoutedEventArgs e)
+        {
+            ExtensionsManager.OpenStore(ExtensionsManager.EdgeStoreUrl);
+        }
+
+        private void ChromeStoreButton_Click(object sender, RoutedEventArgs e)
+        {
+            ExtensionsManager.OpenStore(ExtensionsManager.ChromeStoreUrl);
+        }
+
+        private void OpenExtDirButton_Click(object sender, RoutedEventArgs e)
+        {
+            ExtensionsManager.OpenFolder();
         }
 
         // ================= 设置 =================
@@ -584,7 +897,7 @@ namespace YeyouPlusPlus
             try
             {
                 Directory.CreateDirectory(newPath);
-                foreach (var f in new[] { "favorites.json", "quicklinks.json", "settings.json" })
+                foreach (var f in new[] { "favorites.json", "quicklinks.json", "zoom.json" })
                 {
                     var src = Path.Combine(oldDir, f);
                     if (File.Exists(src))
@@ -594,6 +907,7 @@ namespace YeyouPlusPlus
                 }
                 CopyDir(Path.Combine(oldDir, "icons"), Path.Combine(newPath, "icons"));
                 CopyDir(Path.Combine(oldDir, "downloads"), Path.Combine(newPath, "downloads"));
+                CopyDir(Path.Combine(oldDir, "extensions"), Path.Combine(newPath, "extensions"));
 
                 AppSettingsStore.Current.DataDirPath = newPath;
                 AppSettingsStore.Save();
@@ -692,6 +1006,7 @@ namespace YeyouPlusPlus
                 RenderReleaseList();
             }
 
+            // 检查更新：仅关注稳定版。
             var stable = UpdateChecker.LatestStable(list);
             var hasNew = stable != null && UpdateChecker.IsNewer(stable.Tag, UpdateChecker.CurrentVersion);
             UpdateBadge.Visibility = hasNew ? Visibility.Visible : Visibility.Collapsed;
@@ -704,11 +1019,11 @@ namespace YeyouPlusPlus
             }
             else if (manual)
             {
-                UpdateStatusText.Text = "当前已是最新版本。";
+                UpdateStatusText.Text = "当前已是最新稳定版。";
             }
             else
             {
-                UpdateStatusText.Text = "自动检查完成，当前为最新版本。";
+                UpdateStatusText.Text = "自动检查完成，当前为最新稳定版。";
             }
         }
 
@@ -844,7 +1159,6 @@ namespace YeyouPlusPlus
                 UpdateStatusText.Text = "下载完成，正在启动安装…";
                 if (UpdateChecker.LaunchInstaller(dest))
                 {
-                    // 让安装程序接管（覆盖安装后自动重启新版）。
                     tray?.Dispose();
                     Application.Current.Shutdown();
                 }
@@ -862,7 +1176,11 @@ namespace YeyouPlusPlus
             cacheTimer?.Stop();
             titleTimer?.Stop();
             tray?.Dispose();
-            browser.Dispose();
+            foreach (var tab in tabs)
+            {
+                tab.Host.Dispose();
+            }
+            tabs.Clear();
             base.OnClosed(e);
         }
     }

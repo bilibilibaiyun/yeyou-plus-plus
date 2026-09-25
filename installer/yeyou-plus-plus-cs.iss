@@ -4,7 +4,7 @@
 
 #define MyAppName "页游++"
 #define MyAppNameEn "YeyouPlusPlus"
-#define MyAppVersion "2.0.3"
+#define MyAppVersion "2.0.4"
 #define MyAppPublisher "Yeyou Plus Plus contributors"
 #define MyAppExeName "YeyouPlusPlus.exe"
 
@@ -17,7 +17,7 @@ DefaultDirName={sd}\页游++
 DefaultGroupName=页游++
 UninstallDisplayIcon={app}\{#MyAppExeName}
 OutputDir=..\artifacts
-OutputBaseFilename=YeyouPlusPlus_2.0.3_x64_Setup
+OutputBaseFilename=YeyouPlusPlus_2.0.4_x64_Setup
 SetupIconFile=..\assets\icon\app.ico
 Compression=lzma2/max
 SolidCompression=yes
