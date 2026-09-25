@@ -101,7 +101,9 @@ namespace YeyouPlusPlus
             // 初始创建一个空标签（启动仍显示主页）。
             CreateTab();
             activeTabIndex = 0;
-            RenderTabs();
+            // [修复] RenderTabs 延迟到窗口 Loaded 后执行：构造期向常驻 TabStrip
+            // 填充内容会干扰后续 CEF HwndHost 的 SetParent 呈现（浏览器空白）。
+            Loaded += (s, e) => RenderTabs();
 
             RenderQuickLinks();
             RefreshSettingsView();
@@ -163,7 +165,13 @@ namespace YeyouPlusPlus
                 return;
             }
             UpdateNavButtons();
-            if (!tab.Host.IsLoading)
+            // 页面开始加载时立即触发一次注入检查：进入副本等场景会新建
+            // Flash 插件进程，及时注入可避免等 5 秒周期 tick 造成变速空窗。
+            if (tab.Host.IsLoading)
+            {
+                SpeedHack.EnsureInject();
+            }
+            else
             {
                 ApplyStoredZoom(tab);
             }

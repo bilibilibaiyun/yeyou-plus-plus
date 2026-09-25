@@ -26,6 +26,16 @@ namespace YeyouPlusPlus
         /// <summary>当前倍率。</summary>
         public static double CurrentSpeed => _currentSpeed;
 
+        /// <summary>立即执行一次注入检查（供导航/加载事件及时 hook 新 Flash 进程）。</summary>
+        public static void EnsureInject()
+        {
+            lock (Lock)
+            {
+                EnsureSharedMemory();
+                InjectToFlashProcesses();
+            }
+        }
+
         /// <summary>设置倍率（写入共享内存，并确保 Flash 子进程已注入）。</summary>
         public static void SetSpeed(double speed)
         {

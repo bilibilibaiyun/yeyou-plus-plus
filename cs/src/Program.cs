@@ -67,14 +67,21 @@ namespace YeyouPlusPlus
             var settings = new CefSharp.WinForms.CefSettings
             {
                 CachePath = AppPaths.CacheDir,
-                // 影子（小号）功能依赖：所有 profile 缓存目录的公共根目录。
-                // 全局 CachePath 与各影子的 RequestContextSettings.CachePath 都必须是其子目录。
-                RootCachePath = AppPaths.ProfilesRoot,
                 LogFile = Path.Combine(baseDir, "cef_debug.log"),
                 LogSeverity = LogSeverity.Verbose,
                 // 显式指定子进程路径（与 CefFlashBrowser 一致）。
                 BrowserSubprocessPath = Path.Combine(baseDir, "CefSharp.BrowserSubprocess.exe"),
             };
+
+            // 影子（小号）功能依赖：所有 profile 缓存目录的公共根目录。
+            // 全局 CachePath 与各影子的 RequestContextSettings.CachePath 都必须是其子目录。
+            settings.RootCachePath = AppPaths.ProfilesRoot;
+
+            // [诊断] YPP_DISABLE_GPU=1 时禁用 GPU（排查 GPU 合成内容不呈现问题）。
+            if (Environment.GetEnvironmentVariable("YPP_DISABLE_GPU") == "1")
+            {
+                settings.CefCommandLineArgs["disable-gpu"] = "1";
+            }
 
             // 加载真 Flash 插件（PPAPI）。
             settings.CefCommandLineArgs["ppapi-flash-path"] = flashPath;

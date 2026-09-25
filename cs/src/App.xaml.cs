@@ -7,8 +7,8 @@ namespace YeyouPlusPlus
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
-            // 启动时按设置应用主题（默认日间）。
-            ThemeManager.Apply(AppSettingsStore.Current.IsDarkMode);
+            // [二分实验A] 暂时禁用启动时主题应用，排查 CEF 显示空白问题。
+            // ThemeManager.Apply(AppSettingsStore.Current.IsDarkMode);
         }
     }
 }

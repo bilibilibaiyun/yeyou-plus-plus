@@ -404,12 +404,15 @@ pub extern "system" fn DllMain(_hinst: *mut core::ffi::c_void, reason: DWORD, _r
                 // 等待时间放宽到 5 分钟：进入副本时 Flash 插件进程可能较慢创建/加载，
                 // 过早放弃会永久错过 hook（表现为变速失效）。
                 let mut flash_found = false;
-                for _ in 0..3000 {
+                for _ in 0..300 {
                     if find_flash_module().is_some() {
                         flash_found = true;
                         break;
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    // 低频轮询（1 秒）：Toolhelp 模块快照会短暂挂起本进程全部线程，
+                    // 高频（100ms）轮询会让 Chromium 渲染进程反复被挂起，
+                    // 合成帧无法提交，表现为浏览器区域永久空白。
+                    std::thread::sleep(std::time::Duration::from_millis(1000));
                 }
                 if !flash_found {
                     log_line("[speedhack] 等待 pepflashplayer.dll 超时");
