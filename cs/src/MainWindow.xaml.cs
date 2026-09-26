@@ -238,9 +238,14 @@ namespace YeyouPlusPlus
             ShowView("browser");
         }
 
-        /// <summary>在标签中打开 URL：复用已初始化的空白标签，否则新建标签直接以目标 URL 初始化。</summary>
-        private void OpenInTab(string url)
+        /// <summary>在标签中打开用户输入：先归一化（网址 or 关键词→必应搜索），复用已初始化的空白标签，否则新建标签。</summary>
+        private void OpenInTab(string input)
         {
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                return;
+            }
+            string url = ResolveUrl(input);
             int idx = -1;
             for (int i = 0; i < tabs.Count; i++)
             {
@@ -254,7 +259,7 @@ namespace YeyouPlusPlus
             }
             if (idx < 0)
             {
-                // 新建标签：直接以目标 URL 初始化（CEF 原生机制，避免过早 Load 被吞）。
+                // 新建标签：直接以归一化后的 URL 初始化（CEF 原生机制，避免过早 Load 被吞）。
                 idx = CreateTab(url);
                 activeTabIndex = idx;
                 ApplyActiveTab();
@@ -274,10 +279,7 @@ namespace YeyouPlusPlus
             {
                 return;
             }
-            input = input.Trim();
-            string url = IsUrl(input)
-                ? (input.Contains("://") ? input : "http://" + input)
-                : "https://www.bing.com/search?q=" + Uri.EscapeDataString(input);
+            string url = ResolveUrl(input);
             tabs[index].Host.Load(url);
             tabs[index].HasNavigated = true;
             if (index == activeTabIndex)
@@ -457,6 +459,17 @@ namespace YeyouPlusPlus
                 return true;
             }
             return s.Contains(".") && !s.Contains(" ") && !s.Contains("　");
+        }
+
+        /// <summary>把地址栏 / 搜索框输入归一化为可加载 URL：网址原样，关键词转必应搜索。</summary>
+        private static string ResolveUrl(string input)
+        {
+            input = (input ?? string.Empty).Trim();
+            if (IsUrl(input))
+            {
+                return input.Contains("://") ? input : "http://" + input;
+            }
+            return "https://www.bing.com/search?q=" + Uri.EscapeDataString(input);
         }
 
         private void HomeSearchBox_KeyDown(object sender, KeyEventArgs e)
