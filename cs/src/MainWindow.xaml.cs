@@ -671,15 +671,15 @@ namespace YeyouPlusPlus
                     {
                         Text = "\uE710",
                         FontFamily = (FontFamily)FindResource("IconFont"),
-                        FontSize = 26,
+                        FontSize = 20,
                         HorizontalAlignment = HorizontalAlignment.Center,
                         Foreground = (Brush)FindResource("Theme.TextSecondary")
                     });
                     stack.Children.Add(new TextBlock
                     {
                         Text = "添加",
-                        FontSize = 12,
-                        Margin = new Thickness(0, 7, 0, 0),
+                        FontSize = 11,
+                        Margin = new Thickness(0, 5, 0, 0),
                         HorizontalAlignment = HorizontalAlignment.Center,
                         Foreground = (Brush)FindResource("Theme.TextSecondary")
                     });
@@ -695,10 +695,10 @@ namespace YeyouPlusPlus
                             bi.BeginInit();
                             bi.CacheOption = BitmapCacheOption.OnLoad;
                             bi.UriSource = new Uri(item.IconPath);
-                            bi.DecodePixelWidth = 40;
+                            bi.DecodePixelWidth = 34;
                             bi.EndInit();
                             bi.Freeze();
-                            icon = new Image { Source = bi, Width = 40, Height = 40 };
+                            icon = new Image { Source = bi, Width = 34, Height = 34 };
                         }
                         catch
                         {
@@ -711,7 +711,7 @@ namespace YeyouPlusPlus
                         {
                             Text = "\uE774",
                             FontFamily = (FontFamily)FindResource("IconFont"),
-                            FontSize = 28,
+                            FontSize = 22,
                             HorizontalAlignment = HorizontalAlignment.Center,
                             Foreground = (Brush)FindResource("Theme.Accent")
                         };
@@ -720,9 +720,9 @@ namespace YeyouPlusPlus
                     stack.Children.Add(new TextBlock
                     {
                         Text = display,
-                        FontSize = 12,
-                        Margin = new Thickness(0, 8, 0, 0),
-                        MaxWidth = 92,
+                        FontSize = 11,
+                        Margin = new Thickness(0, 6, 0, 0),
+                        MaxWidth = 82,
                         TextTrimming = TextTrimming.CharacterEllipsis,
                         HorizontalAlignment = HorizontalAlignment.Center,
                         Foreground = (Brush)FindResource("Theme.TextPrimary")
@@ -731,8 +731,8 @@ namespace YeyouPlusPlus
 
                 var btn = new Button
                 {
-                    Width = 106,
-                    Height = 98,
+                    Width = 90,
+                    Height = 84,
                     Margin = new Thickness(7),
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
