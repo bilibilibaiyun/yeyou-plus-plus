@@ -60,8 +60,8 @@ namespace YeyouPlusPlus
             SpeedCombo.ItemsSource = new[] { "0.5x", "1x", "1.5x", "2x", "3x", "5x" };
             SpeedCombo.SelectedIndex = 1; // 默认 1x
 
-            // 倍速应用定时器：每 5 秒下发一次倍率（同时确保新的 Flash 子进程被注入）。
-            speedTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+            // 倍速应用定时器：每 2 秒下发一次倍率（同时确保新的 Flash 子进程被注入）。
+            speedTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
             speedTimer.Tick += (s, e) => ApplySpeed();
             speedTimer.Start();
 
