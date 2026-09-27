@@ -16,6 +16,9 @@ namespace YeyouPlusPlus
         {
             try
             {
+                // 覆盖安装后恢复备份的用户数据（账号/收藏/配置），必须在 CEF 初始化前完成。
+                DataBackup.RestoreIfNeeded();
+
                 InitCef();
 
                 var app = new App();

@@ -1357,7 +1357,9 @@ namespace YeyouPlusPlus
                     return;
                 }
 
-                UpdateStatusText.Text = "下载完成，正在启动安装…";
+                UpdateStatusText.Text = "下载完成，正在备份数据并启动安装…";
+                // 覆盖安装会删除安装目录（旧版安装脚本行为），先备份数据防止账号/收藏丢失。
+                DataBackup.Backup();
                 if (UpdateChecker.LaunchInstaller(dest))
                 {
                     Application.Current.Shutdown();

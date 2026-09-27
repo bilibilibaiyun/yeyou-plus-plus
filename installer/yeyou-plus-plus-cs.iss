@@ -50,26 +50,58 @@ Filename: "{app}\{#MyAppExeName}"; Description: "运行 {#MyAppName}"; Flags: no
 ; 静默安装（内置更新覆盖安装）：安装完成后自动启动软件。
 Filename: "{app}\{#MyAppExeName}"; Flags: nowait skipifnotsilent
 
-[UninstallDelete]
-; 卸载时清除程序目录下的全部运行时数据（缓存、配置、收藏、快捷入口、下载、更新包）
-Type: filesandordirs; Name: "{app}"
-
 [Code]
-// 卸载时同步删除用户自定义数据目录（记录于注册表 HKCU\Software\YeyouPlusPlus\DataDirPath）。
+const
+  RegKey = 'Software\YeyouPlusPlus';
+
+// 安装开始前：若目标目录已存在旧版本（覆盖安装升级），写升级标志，
+// 使新版卸载程序在升级时保留用户数据（账号/收藏/配置）。
+function InitializeSetup(): Boolean;
+begin
+  Result := True;
+  if DirExists(ExpandConstant('{app}')) then
+  begin
+    RegWriteStringValue(HKCU, RegKey, 'IsUpgrading', '1');
+  end;
+end;
+
+// 安装完成：清除升级标志。
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+  begin
+    RegDeleteValue(HKCU, RegKey, 'IsUpgrading');
+  end;
+end;
+
+// 卸载：覆盖安装升级时保留用户数据；用户主动卸载时才彻底清除。
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  DataDir: String;
+  DataDir, IsUpgrading: String;
 begin
   if CurUninstallStep = usUninstall then
   begin
-    if RegQueryStringValue(HKCU, 'Software\YeyouPlusPlus', 'DataDirPath', DataDir) then
+    if RegQueryStringValue(HKCU, RegKey, 'IsUpgrading', IsUpgrading) and (IsUpgrading = '1') then
     begin
-      DataDir := Trim(DataDir);
-      if (Length(DataDir) > 3) and DirExists(DataDir) then
+      // 覆盖安装升级：保留数据，仅清除升级标志。
+      RegDeleteValue(HKCU, RegKey, 'IsUpgrading');
+    end
+    else
+    begin
+      // 用户主动卸载：彻底清除默认数据目录与自定义数据目录。
+      if DirExists(ExpandConstant('{app}\data')) then
       begin
-        DelTree(DataDir, True, True, True);
+        DelTree(ExpandConstant('{app}\data'), True, True, True);
       end;
-      RegDeleteKeyIncludingSubkeys(HKCU, 'Software\YeyouPlusPlus');
+      if RegQueryStringValue(HKCU, RegKey, 'DataDirPath', DataDir) then
+      begin
+        DataDir := Trim(DataDir);
+        if (Length(DataDir) > 3) and DirExists(DataDir) then
+        begin
+          DelTree(DataDir, True, True, True);
+        end;
+      end;
+      RegDeleteKeyIncludingSubkeys(HKCU, RegKey);
     end;
   end;
 end;
