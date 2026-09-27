@@ -1359,15 +1359,29 @@ namespace YeyouPlusPlus
 
                 UpdateStatusText.Text = "下载完成，正在备份数据并启动安装…";
                 // 覆盖安装会删除安装目录（旧版安装脚本行为），先备份数据防止账号/收藏丢失。
-                DataBackup.Backup();
-                if (UpdateChecker.LaunchInstaller(dest))
+                // 备份放在后台线程执行，避免在 UI 线程同步复制大目录导致界面卡死；
+                // 备份（无论成败）完成后，再回到 UI 线程启动安装程序。
+                Task.Run(() =>
                 {
-                    Application.Current.Shutdown();
-                }
-                else
+                    try
+                    {
+                        DataBackup.Backup();
+                    }
+                    catch
+                    {
+                        // 备份失败不阻塞安装流程。
+                    }
+                }).ContinueWith(_ =>
                 {
-                    UpdateStatusText.Text = "安装程序启动失败。";
-                }
+                    if (UpdateChecker.LaunchInstaller(dest))
+                    {
+                        Application.Current.Shutdown();
+                    }
+                    else
+                    {
+                        UpdateStatusText.Text = "安装程序启动失败。";
+                    }
+                }, TaskScheduler.FromCurrentSynchronizationContext());
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace YeyouPlusPlus
@@ -11,6 +12,25 @@ namespace YeyouPlusPlus
     /// </summary>
     public static class DataBackup
     {
+        /// <summary>
+        /// 备份时需要跳过的目录名（忽略大小写）。
+        /// 这些目录体积大、可随时重建，且部分文件在 CEF 运行期间被锁定，
+        /// 备份它们既无必要又会显著拖慢备份、阻塞 UI。
+        /// </summary>
+        private static readonly HashSet<string> SkipDirectories =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "update",
+                "downloads",
+                "Cache",
+                "Code Cache",
+                "GPUCache",
+                "ShaderCache",
+                "GrShaderCache",
+                "DawnGraphiteCache",
+                "DawnWebGPUCache"
+            };
+
         /// <summary>备份根目录：优先安装盘根目录，回退系统临时目录。</summary>
         private static string BackupRoot
         {
@@ -163,7 +183,14 @@ namespace YeyouPlusPlus
             else if (File.Exists(src))
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(dst));
-                File.Copy(src, dst, true);
+                try
+                {
+                    File.Copy(src, dst, true);
+                }
+                catch
+                {
+                    // 单个文件可能被 CEF 短暂锁定，忽略该文件，继续复制其余数据。
+                }
             }
         }
 
@@ -172,11 +199,23 @@ namespace YeyouPlusPlus
             Directory.CreateDirectory(dst);
             foreach (var f in Directory.GetFiles(src))
             {
-                File.Copy(f, Path.Combine(dst, Path.GetFileName(f)), true);
+                try
+                {
+                    File.Copy(f, Path.Combine(dst, Path.GetFileName(f)), true);
+                }
+                catch
+                {
+                    // 单个文件可能被 CEF 短暂锁定，忽略该文件，继续复制其余数据。
+                }
             }
             foreach (var d in Directory.GetDirectories(src))
             {
-                CopyDir(d, Path.Combine(dst, Path.GetFileName(d)));
+                var name = Path.GetFileName(d);
+                if (SkipDirectories.Contains(name))
+                {
+                    continue;
+                }
+                CopyDir(d, Path.Combine(dst, name));
             }
         }
     }
