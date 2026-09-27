@@ -4,7 +4,7 @@
 
 #define MyAppName "页游++"
 #define MyAppNameEn "YeyouPlusPlus"
-#define MyAppVersion "2.1.1"
+#define MyAppVersion "2.1.2"
 #define MyAppPublisher "Yeyou Plus Plus contributors"
 #define MyAppExeName "YeyouPlusPlus.exe"
 
@@ -17,7 +17,7 @@ DefaultDirName={sd}\页游++
 DefaultGroupName=页游++
 UninstallDisplayIcon={app}\{#MyAppExeName}
 OutputDir=..\artifacts
-OutputBaseFilename=YeyouPlusPlus_2.1.1_x64_Setup
+OutputBaseFilename=YeyouPlusPlus_2.1.2_x64_Setup
 SetupIconFile=..\assets\icon\app.ico
 Compression=lzma2/max
 SolidCompression=yes
@@ -54,12 +54,16 @@ Filename: "{app}\{#MyAppExeName}"; Flags: nowait skipifnotsilent
 const
   RegKey = 'Software\YeyouPlusPlus';
 
-// 安装开始前：若目标目录已存在旧版本（覆盖安装升级），写升级标志，
+// 安装开始前：若检测到旧版本（覆盖安装升级），写升级标志，
 // 使新版卸载程序在升级时保留用户数据（账号/收藏/配置）。
+// 注意：InitializeSetup 阶段 {app} 常量尚未初始化，ExpandConstant('{app}') 会报
+// 「An attempt was made to expand the "app" constant before it was initialized」，
+// 因此改用「注册表卸载信息键 + 默认安装目录」双重检测。
 function InitializeSetup(): Boolean;
 begin
   Result := True;
-  if DirExists(ExpandConstant('{app}')) then
+  if RegKeyExists(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{{7C1F2A64-9B33-4E7E-A0D1-8E2B4C6D1A0F}_is1')
+     or DirExists(ExpandConstant('{sd}\页游++')) then
   begin
     RegWriteStringValue(HKCU, RegKey, 'IsUpgrading', '1');
   end;
