@@ -27,10 +27,12 @@ static LOGGED: AtomicBool = AtomicBool::new(false);
 static HOOK_COUNT: AtomicU64 = AtomicU64::new(0);
 
 fn log_line(msg: &str) {
+    // 写到系统临时目录固定位置，方便用户反馈诊断信息。
+    let path = std::env::temp_dir().join("speedhack.log");
     let _ = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open("speedhack.log")
+        .open(path)
         .and_then(|mut f| {
             use std::io::Write;
             writeln!(f, "{}", msg)

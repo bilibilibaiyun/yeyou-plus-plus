@@ -82,6 +82,7 @@ namespace YeyouPlusPlus
         {
             if (!File.Exists(DllPath))
             {
+                Log("speedhack.dll 不存在: " + DllPath);
                 return;
             }
 
@@ -93,26 +94,42 @@ namespace YeyouPlusPlus
                     {
                         continue;
                     }
-                    // 只注入真正加载了 Flash 插件（pepflashplayer.dll）的进程。
-                    // 广撒网会连 GPU/渲染进程的 QueryPerformanceCounter 一起 hook，
-                    // 导致渲染时间被加速、画面严重卡顿；精确注入只影响 Flash 游戏逻辑。
-                    if (!HasFlashModule(proc.Id))
-                    {
-                        continue;
-                    }
+                    // 广撒网注入所有 CEF 子进程：QPC hook 已移除，GPU/渲染进程不再因
+                    // QPC 被加速而卡顿；timeGetTime/GetTickCount 等对渲染影响很小。
+                    // 广撒网保证 Flash 进程必然被注入，避免「精确检测模块」因加载时机
+                    // 漏注入导致变速失效（时灵时不灵）。
                     if (Inject(proc.Id, DllPath))
                     {
                         _injectedPids.Add(proc.Id);
+                        Log("注入成功 PID=" + proc.Id);
+                    }
+                    else
+                    {
+                        Log("注入失败 PID=" + proc.Id);
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // 注入失败（权限等），跳过该进程。
+                    Log("注入异常 PID=" + proc.Id + ": " + ex.Message);
                 }
                 finally
                 {
                     proc.Dispose();
                 }
+            }
+        }
+
+        private static void Log(string msg)
+        {
+            try
+            {
+                var path = Path.Combine(Path.GetTempPath(), "speedhack-diag.log");
+                File.AppendAllText(path,
+                    DateTime.Now.ToString("HH:mm:ss.fff") + " " + msg + Environment.NewLine);
+            }
+            catch
+            {
+                // 忽略日志写入失败。
             }
         }
 
