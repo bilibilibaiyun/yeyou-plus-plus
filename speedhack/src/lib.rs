@@ -149,12 +149,13 @@ fn scale(s: &Scaler, now: u64, speed: f64) -> u64 {
     result
 }
 
-// 7 个时间读取函数，各自独立缩放器（基准/回绕特性不同）。
+// 6 个时间读取函数，各自独立缩放器（基准/回绕特性不同）。
+// 注意：不 hook QueryPerformanceCounter——Flash Player 用 QPC 做渲染帧调度，
+// hook 它会让渲染时间轴错乱导致画面严重卡顿；Flash 游戏变速靠 timeGetTime/GetTickCount。
 static S_TIMEGETTIME: Scaler = scaler_new();
 static S_GETMESSAGETIME: Scaler = scaler_new();
 static S_GETTICKCOUNT: Scaler = scaler_new();
 static S_GETTICKCOUNT64: Scaler = scaler_new();
-static S_QPC: Scaler = scaler_new();
 static S_GSATFT: Scaler = scaler_new();
 static S_GSPAFT: Scaler = scaler_new();
 
@@ -172,7 +173,6 @@ static ORIG_TIMESETEVENT: AtomicU64 = AtomicU64::new(0);
 static ORIG_GETMESSAGETIME: AtomicU64 = AtomicU64::new(0);
 static ORIG_GETTICKCOUNT: AtomicU64 = AtomicU64::new(0);
 static ORIG_GETTICKCOUNT64: AtomicU64 = AtomicU64::new(0);
-static ORIG_QPC: AtomicU64 = AtomicU64::new(0);
 static ORIG_GSATFT: AtomicU64 = AtomicU64::new(0);
 static ORIG_GSPAFT: AtomicU64 = AtomicU64::new(0);
 static ORIG_SETWAITABLETIMER: AtomicU64 = AtomicU64::new(0);
@@ -389,19 +389,6 @@ unsafe extern "system" fn hooked_get_tick_count64() -> u64 {
     scale(&S_GETTICKCOUNT64, real, get_speed())
 }
 
-unsafe extern "system" fn hooked_query_performance_counter(out: *mut i64) -> BOOL {
-    log_once_if_needed();
-    let orig = ORIG_QPC.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0;
-    }
-    let mut real: i64 = 0;
-    let ret = (std::mem::transmute::<u64, unsafe extern "system" fn(*mut i64) -> BOOL>(orig))(&mut real);
-    let scaled = scale(&S_QPC, real as u64, get_speed());
-    *out = scaled as i64;
-    ret
-}
-
 unsafe extern "system" fn hooked_get_system_time_as_file_time(out: *mut u64) {
     log_once_if_needed();
     let orig = ORIG_GSATFT.load(Ordering::Relaxed);
@@ -480,7 +467,6 @@ pub extern "system" fn DllMain(
             create_hook("user32.dll", b"GetMessageTime\0", hooked_get_message_time as *mut c_void, &ORIG_GETMESSAGETIME, &mut targets, &mut n);
             create_hook("kernel32.dll", b"GetTickCount\0", hooked_get_tick_count as *mut c_void, &ORIG_GETTICKCOUNT, &mut targets, &mut n);
             create_hook("kernel32.dll", b"GetTickCount64\0", hooked_get_tick_count64 as *mut c_void, &ORIG_GETTICKCOUNT64, &mut targets, &mut n);
-            create_hook("kernel32.dll", b"QueryPerformanceCounter\0", hooked_query_performance_counter as *mut c_void, &ORIG_QPC, &mut targets, &mut n);
             create_hook("kernel32.dll", b"GetSystemTimeAsFileTime\0", hooked_get_system_time_as_file_time as *mut c_void, &ORIG_GSATFT, &mut targets, &mut n);
             create_hook("kernel32.dll", b"GetSystemTimePreciseAsFileTime\0", hooked_get_system_time_precise_as_file_time as *mut c_void, &ORIG_GSPAFT, &mut targets, &mut n);
             create_hook("kernel32.dll", b"SetWaitableTimer\0", hooked_set_waitable_timer as *mut c_void, &ORIG_SETWAITABLETIMER, &mut targets, &mut n);

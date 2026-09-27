@@ -60,8 +60,8 @@ namespace YeyouPlusPlus
             SpeedCombo.ItemsSource = new[] { "0.5x", "1x", "1.5x", "2x", "3x", "5x" };
             SpeedCombo.SelectedIndex = 1; // 默认 1x
 
-            // 倍速应用定时器：每 2 秒下发一次倍率（同时确保新的 Flash 子进程被注入）。
-            speedTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+            // 倍速应用定时器：每 1 秒下发一次倍率（同时确保新的 Flash 子进程被及时注入）。
+            speedTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             speedTimer.Tick += (s, e) => ApplySpeed();
             speedTimer.Start();
 
@@ -159,20 +159,24 @@ namespace YeyouPlusPlus
 
         private void OnTabLoadingStateChanged(BrowserTab tab)
         {
-            if (!IsActiveTab(tab))
-            {
-                return;
-            }
-            UpdateNavButtons();
-            // 页面开始加载时立即触发一次注入检查：进入副本等场景会新建
-            // Flash 插件进程，及时注入可避免等 5 秒周期 tick 造成变速空窗。
+            // 页面加载事件对所有标签生效（缩放/注入不受「当前激活标签」限制）——
+            // 否则「原页面尚未加载完就打开影子」时，原页面因不再是激活标签，
+            // 加载完成事件在此处被提前 return 跳过，导致缩放应用丢失（缩放失效）。
             if (tab.Host.IsLoading)
             {
+                // 页面开始加载时立即触发一次注入检查：进入副本等场景会新建
+                // Flash 插件进程，及时注入可避免等定时周期 tick 造成变速空窗。
                 SpeedHack.EnsureInject();
             }
             else
             {
                 ApplyStoredZoom(tab);
+            }
+
+            // 前进/后退按钮状态只对激活标签有意义。
+            if (IsActiveTab(tab))
+            {
+                UpdateNavButtons();
             }
         }
 
