@@ -8,8 +8,8 @@
 //! 2. 在 DllMain（DLL_PROCESS_ATTACH）里同步安装所有 hook——此时 Flash
 //!    尚未运行，MinHook 挂起线程 patch 无竞态；之前「等 Flash 加载后再
 //!    异步 hook」会撞上高频调用导致 ppapi 进程崩溃。
-//! 3. 覆盖 17 个时间/等待函数：时间读取用「锚定式 delta*倍率」，等待
-//!    函数用「时间/倍率」。
+//! 3. 覆盖 6 个时间读取函数，用「锚定式 delta*倍率」缩放；不缩放
+//!    Sleep/SetTimer 等等待与定时函数（否则会打乱资源加载与渲染帧节流）。
 //!
 //! 倍率通过命名共享内存 `Local\YeyouSpeedHack`（8 字节 f64）从主程序下发。
 
@@ -18,7 +18,6 @@ use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
 
 use minhook_sys::*;
 
-type BOOL = i32;
 type DWORD = u32;
 
 // ============ 日志（仅在 hook 函数首次被调用时写，避开 DllMain 的 loader lock） ============
@@ -163,191 +162,14 @@ static S_GSPAFT: Scaler = scaler_new();
 
 // ============ 原函数（trampoline） ============
 
-static ORIG_SLEEP: AtomicU64 = AtomicU64::new(0);
-static ORIG_SLEEPEX: AtomicU64 = AtomicU64::new(0);
-static ORIG_WFSO: AtomicU64 = AtomicU64::new(0);
-static ORIG_WFSOEX: AtomicU64 = AtomicU64::new(0);
-static ORIG_WFMO: AtomicU64 = AtomicU64::new(0);
-static ORIG_WFMOEX: AtomicU64 = AtomicU64::new(0);
-static ORIG_SETTIMER: AtomicU64 = AtomicU64::new(0);
 static ORIG_TIMEGETTIME: AtomicU64 = AtomicU64::new(0);
-static ORIG_TIMESETEVENT: AtomicU64 = AtomicU64::new(0);
 static ORIG_GETMESSAGETIME: AtomicU64 = AtomicU64::new(0);
 static ORIG_GETTICKCOUNT: AtomicU64 = AtomicU64::new(0);
 static ORIG_GETTICKCOUNT64: AtomicU64 = AtomicU64::new(0);
 static ORIG_GSATFT: AtomicU64 = AtomicU64::new(0);
 static ORIG_GSPAFT: AtomicU64 = AtomicU64::new(0);
-static ORIG_SETWAITABLETIMER: AtomicU64 = AtomicU64::new(0);
-static ORIG_SETWAITABLETIMEREX: AtomicU64 = AtomicU64::new(0);
 
 // ============ Hook 函数 ============
-
-// --- 等待类（时间 / 倍率） ---
-
-unsafe extern "system" fn hooked_sleep(ms: DWORD) {
-    log_once_if_needed();
-    let orig = ORIG_SLEEP.load(Ordering::Relaxed);
-    if orig == 0 {
-        return;
-    }
-    let speed = get_speed();
-    let scaled = (ms as f64 / speed) as DWORD;
-    (std::mem::transmute::<u64, unsafe extern "system" fn(DWORD)>(orig))(scaled);
-}
-
-unsafe extern "system" fn hooked_sleep_ex(ms: DWORD, alertable: BOOL) -> DWORD {
-    log_once_if_needed();
-    let orig = ORIG_SLEEPEX.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0;
-    }
-    let speed = get_speed();
-    let scaled = (ms as f64 / speed) as DWORD;
-    (std::mem::transmute::<u64, unsafe extern "system" fn(DWORD, BOOL) -> DWORD>(orig))(scaled, alertable)
-}
-
-unsafe extern "system" fn hooked_wait_for_single_object(h: *mut c_void, ms: DWORD) -> DWORD {
-    log_once_if_needed();
-    let orig = ORIG_WFSO.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0;
-    }
-    let speed = get_speed();
-    let scaled = (ms as f64 / speed) as DWORD;
-    (std::mem::transmute::<u64, unsafe extern "system" fn(*mut c_void, DWORD) -> DWORD>(orig))(h, scaled)
-}
-
-unsafe extern "system" fn hooked_wait_for_single_object_ex(h: *mut c_void, ms: DWORD, alertable: BOOL) -> DWORD {
-    log_once_if_needed();
-    let orig = ORIG_WFSOEX.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0;
-    }
-    let speed = get_speed();
-    let scaled = (ms as f64 / speed) as DWORD;
-    (std::mem::transmute::<u64, unsafe extern "system" fn(*mut c_void, DWORD, BOOL) -> DWORD>(orig))(h, scaled, alertable)
-}
-
-unsafe extern "system" fn hooked_wait_for_multiple_objects(
-    count: DWORD,
-    handles: *const *mut c_void,
-    wait_all: BOOL,
-    ms: DWORD,
-) -> DWORD {
-    log_once_if_needed();
-    let orig = ORIG_WFMO.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0;
-    }
-    let speed = get_speed();
-    let scaled = (ms as f64 / speed) as DWORD;
-    (std::mem::transmute::<u64, unsafe extern "system" fn(DWORD, *const *mut c_void, BOOL, DWORD) -> DWORD>(orig))(
-        count, handles, wait_all, scaled,
-    )
-}
-
-unsafe extern "system" fn hooked_wait_for_multiple_objects_ex(
-    count: DWORD,
-    handles: *const *mut c_void,
-    wait_all: BOOL,
-    ms: DWORD,
-    alertable: BOOL,
-) -> DWORD {
-    log_once_if_needed();
-    let orig = ORIG_WFMOEX.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0;
-    }
-    let speed = get_speed();
-    let scaled = (ms as f64 / speed) as DWORD;
-    (std::mem::transmute::<u64, unsafe extern "system" fn(DWORD, *const *mut c_void, BOOL, DWORD, BOOL) -> DWORD>(orig))(
-        count, handles, wait_all, scaled, alertable,
-    )
-}
-
-unsafe extern "system" fn hooked_set_timer(
-    hwnd: *mut c_void,
-    n_id: usize,
-    elapse: DWORD,
-    timer_proc: *mut c_void,
-) -> usize {
-    log_once_if_needed();
-    let orig = ORIG_SETTIMER.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0;
-    }
-    let speed = get_speed();
-    let scaled = (elapse as f64 / speed) as DWORD;
-    (std::mem::transmute::<u64, unsafe extern "system" fn(*mut c_void, usize, DWORD, *mut c_void) -> usize>(orig))(
-        hwnd, n_id, scaled, timer_proc,
-    )
-}
-
-unsafe extern "system" fn hooked_time_set_event(
-    delay: DWORD,
-    resolution: DWORD,
-    time_proc: *mut c_void,
-    user: usize,
-    event: DWORD,
-) -> DWORD {
-    log_once_if_needed();
-    let orig = ORIG_TIMESETEVENT.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0;
-    }
-    let speed = get_speed();
-    let scaled = (delay as f64 / speed) as DWORD;
-    (std::mem::transmute::<u64, unsafe extern "system" fn(DWORD, DWORD, *mut c_void, usize, DWORD) -> DWORD>(orig))(
-        scaled, resolution, time_proc, user, event,
-    )
-}
-
-unsafe extern "system" fn hooked_set_waitable_timer(
-    timer: *mut c_void,
-    due_time: *const i64,
-    period: i32,
-    completion_routine: *mut c_void,
-    arg: *mut c_void,
-    resume: BOOL,
-) -> BOOL {
-    log_once_if_needed();
-    let orig = ORIG_SETWAITABLETIMER.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0;
-    }
-    if due_time.is_null() {
-        return 0;
-    }
-    let speed = get_speed();
-    let scaled = (*due_time as f64 / speed) as i64;
-    (std::mem::transmute::<u64, unsafe extern "system" fn(*mut c_void, *const i64, i32, *mut c_void, *mut c_void, BOOL) -> BOOL>(orig))(
-        timer, &scaled, period, completion_routine, arg, resume,
-    )
-}
-
-unsafe extern "system" fn hooked_set_waitable_timer_ex(
-    timer: *mut c_void,
-    due_time: *const i64,
-    period: i32,
-    completion_routine: *mut c_void,
-    arg: *mut c_void,
-    wake_context: *mut c_void,
-    tolerable_delay: DWORD,
-) -> BOOL {
-    log_once_if_needed();
-    let orig = ORIG_SETWAITABLETIMEREX.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0;
-    }
-    if due_time.is_null() {
-        return 0;
-    }
-    let speed = get_speed();
-    let scaled = (*due_time as f64 / speed) as i64;
-    (std::mem::transmute::<u64, unsafe extern "system" fn(*mut c_void, *const i64, i32, *mut c_void, *mut c_void, *mut c_void, DWORD) -> BOOL>(orig))(
-        timer, &scaled, period, completion_routine, arg, wake_context, tolerable_delay,
-    )
-}
 
 // --- 时间读取类（锚定式 delta * 倍率） ---
 
@@ -457,22 +279,12 @@ pub extern "system" fn DllMain(
             let mut targets: [*mut c_void; 32] = [std::ptr::null_mut(); 32];
             let mut n: usize = 0;
 
-            create_hook("kernel32.dll", b"Sleep\0", hooked_sleep as *mut c_void, &ORIG_SLEEP, &mut targets, &mut n);
-            create_hook("kernel32.dll", b"SleepEx\0", hooked_sleep_ex as *mut c_void, &ORIG_SLEEPEX, &mut targets, &mut n);
-            create_hook("kernel32.dll", b"WaitForSingleObject\0", hooked_wait_for_single_object as *mut c_void, &ORIG_WFSO, &mut targets, &mut n);
-            create_hook("kernel32.dll", b"WaitForSingleObjectEx\0", hooked_wait_for_single_object_ex as *mut c_void, &ORIG_WFSOEX, &mut targets, &mut n);
-            create_hook("kernel32.dll", b"WaitForMultipleObjects\0", hooked_wait_for_multiple_objects as *mut c_void, &ORIG_WFMO, &mut targets, &mut n);
-            create_hook("kernel32.dll", b"WaitForMultipleObjectsEx\0", hooked_wait_for_multiple_objects_ex as *mut c_void, &ORIG_WFMOEX, &mut targets, &mut n);
-            create_hook("user32.dll", b"SetTimer\0", hooked_set_timer as *mut c_void, &ORIG_SETTIMER, &mut targets, &mut n);
             create_hook("winmm.dll", b"timeGetTime\0", hooked_time_get_time as *mut c_void, &ORIG_TIMEGETTIME, &mut targets, &mut n);
-            create_hook("winmm.dll", b"timeSetEvent\0", hooked_time_set_event as *mut c_void, &ORIG_TIMESETEVENT, &mut targets, &mut n);
             create_hook("user32.dll", b"GetMessageTime\0", hooked_get_message_time as *mut c_void, &ORIG_GETMESSAGETIME, &mut targets, &mut n);
             create_hook("kernel32.dll", b"GetTickCount\0", hooked_get_tick_count as *mut c_void, &ORIG_GETTICKCOUNT, &mut targets, &mut n);
             create_hook("kernel32.dll", b"GetTickCount64\0", hooked_get_tick_count64 as *mut c_void, &ORIG_GETTICKCOUNT64, &mut targets, &mut n);
             create_hook("kernel32.dll", b"GetSystemTimeAsFileTime\0", hooked_get_system_time_as_file_time as *mut c_void, &ORIG_GSATFT, &mut targets, &mut n);
             create_hook("kernel32.dll", b"GetSystemTimePreciseAsFileTime\0", hooked_get_system_time_precise_as_file_time as *mut c_void, &ORIG_GSPAFT, &mut targets, &mut n);
-            create_hook("kernel32.dll", b"SetWaitableTimer\0", hooked_set_waitable_timer as *mut c_void, &ORIG_SETWAITABLETIMER, &mut targets, &mut n);
-            create_hook("kernel32.dll", b"SetWaitableTimerEx\0", hooked_set_waitable_timer_ex as *mut c_void, &ORIG_SETWAITABLETIMEREX, &mut targets, &mut n);
 
             HOOK_COUNT.store(n as u64, Ordering::Relaxed);
 
