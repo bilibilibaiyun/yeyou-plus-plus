@@ -1,23 +1,22 @@
-//! 内置变速齿轮（MinHook inline hook 版，完整照搬 OpenSpeedy 的 17 函数方案）。
+//! 内置变速齿轮（MinHook inline hook 版，针对 Flash 页游专用）。
 //!
-//! 关键设计：
+//! 关键设计（历经多版踩坑后的正确结论）：
 //! 1. 用 MinHook inline hook（改函数入口机器码），而非 IAT hook——
 //!    IAT hook 只对「通过导入表静态调用」生效，Flash 副本内通过
 //!    GetProcAddress 动态获取时间函数地址后调用，会完全绕过 IAT hook，
 //!    这正是「主界面变速有效、进入副本失效」的根因。
 //! 2. 在 DllMain（DLL_PROCESS_ATTACH）里同步安装所有 hook——此时 Flash
-//!    尚未运行，MinHook 挂起线程 patch 无竞态；之前「等 Flash 加载后再
-//!    异步 hook」会撞上高频调用导致 ppapi 进程崩溃。
-//! 3. 覆盖完整的 17 个时间相关函数（与 OpenSpeedy 一致）：
-//!    - 时间读取 7 个（锚定式 `base + (now - baseReal) * speed`）：
-//!      timeGetTime / GetMessageTime / GetTickCount / GetTickCount64 /
-//!      QueryPerformanceCounter / GetSystemTimeAsFileTime /
-//!      GetSystemTimePreciseAsFileTime。
-//!    - 等待/定时 10 个（`time / speed`，0 与 INFINITE 不缩放）：
-//!      Sleep / SleepEx / WaitForSingleObject(Ex) / WaitForMultipleObjects(Ex) /
-//!      SetTimer / timeSetEvent / SetWaitableTimer(Ex)。
-//!    Flash 页游的加速依赖「时间读取」驱动游戏逻辑、依赖「等待/定时」驱动
-//!    帧循环节奏——两者缺一不可，否则会出现「有加速但达不到倍率 + 卡顿」。
+//!    尚未运行，MinHook 挂起线程 patch 无竞态。
+//! 3. 只 hook 6 个「时间读取」函数（不 hook QPC、不 hook 等待/定时函数）：
+//!    - Flash 游戏逻辑（getTimer/Timer/setInterval）底层全靠 timeGetTime 驱动，
+//!      加速 timeGetTime 的返回值即可让游戏逻辑与定时器一起加速。
+//!    - 不 hook QueryPerformanceCounter：Flash 渲染帧调度走 Chromium 合成器，
+//!      hook QPC 会让渲染时间轴错乱、画面严重卡顿。
+//!    - 不 hook Sleep/SetTimer/WaitFor*/SetWaitableTimer：Flash 内部定时器
+//!      靠 timeGetTime 差值驱动，hook 这些会破坏资源加载与帧节流，导致
+//!      变速失效或卡顿。
+//! 4. DllMain 里调用 timeBeginPeriod(1)：把 timeGetTime 精度从默认 15.6ms
+//!    提到 1ms，避免高倍率下时间粒度被放大导致「倍数不准、时快时慢」。
 //!
 //! 倍率通过命名共享内存 `Local\YeyouSpeedHack`（8 字节 f64）从主程序下发。
 
@@ -27,22 +26,6 @@ use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
 use minhook_sys::*;
 
 type DWORD = u32;
-type BOOL = i32;
-type HANDLE = *mut c_void;
-type UINT = u32;
-#[allow(non_camel_case_types)]
-type UINT_PTR = usize;
-type LONG = i32;
-type MMRESULT = u32;
-type ULONG = u32;
-
-#[repr(C)]
-#[allow(non_snake_case)]
-struct LARGE_INTEGER {
-    QuadPart: i64,
-}
-
-const INFINITE: DWORD = 0xFFFFFFFF;
 
 // ============ 日志（仅在 hook 函数首次被调用时写，避开 DllMain 的 loader lock） ============
 
@@ -174,12 +157,11 @@ fn scale(s: &Scaler, now: u64, speed: f64) -> u64 {
     result
 }
 
-// 7 个时间读取函数，各自独立缩放器（基准/回绕特性不同）。
+// 6 个时间读取函数，各自独立缩放器（基准/回绕特性不同）。
 static S_TIMEGETTIME: Scaler = scaler_new();
 static S_GETMESSAGETIME: Scaler = scaler_new();
 static S_GETTICKCOUNT: Scaler = scaler_new();
 static S_GETTICKCOUNT64: Scaler = scaler_new();
-static S_QPC: Scaler = scaler_new();
 static S_GSATFT: Scaler = scaler_new();
 static S_GSPAFT: Scaler = scaler_new();
 
@@ -189,22 +171,10 @@ static ORIG_TIMEGETTIME: AtomicU64 = AtomicU64::new(0);
 static ORIG_GETMESSAGETIME: AtomicU64 = AtomicU64::new(0);
 static ORIG_GETTICKCOUNT: AtomicU64 = AtomicU64::new(0);
 static ORIG_GETTICKCOUNT64: AtomicU64 = AtomicU64::new(0);
-static ORIG_QPC: AtomicU64 = AtomicU64::new(0);
 static ORIG_GSATFT: AtomicU64 = AtomicU64::new(0);
 static ORIG_GSPAFT: AtomicU64 = AtomicU64::new(0);
 
-static ORIG_SLEEP: AtomicU64 = AtomicU64::new(0);
-static ORIG_SLEEPEX: AtomicU64 = AtomicU64::new(0);
-static ORIG_WFSO: AtomicU64 = AtomicU64::new(0);
-static ORIG_WFSOEX: AtomicU64 = AtomicU64::new(0);
-static ORIG_WFMO: AtomicU64 = AtomicU64::new(0);
-static ORIG_WFMOEX: AtomicU64 = AtomicU64::new(0);
-static ORIG_SETTIMER: AtomicU64 = AtomicU64::new(0);
-static ORIG_TIMESETEVENT: AtomicU64 = AtomicU64::new(0);
-static ORIG_SETWAITABLETIMER: AtomicU64 = AtomicU64::new(0);
-static ORIG_SETWAITABLETIMEREX: AtomicU64 = AtomicU64::new(0);
-
-// ============ 时间读取类（锚定式 delta * 倍率） ============
+// ============ Hook 函数（时间读取类：锚定式 delta * 倍率） ============
 
 unsafe extern "system" fn hooked_time_get_time() -> DWORD {
     log_once_if_needed();
@@ -246,19 +216,6 @@ unsafe extern "system" fn hooked_get_tick_count64() -> u64 {
     scale(&S_GETTICKCOUNT64, real, get_speed())
 }
 
-unsafe extern "system" fn hooked_query_performance_counter(out: *mut i64) -> BOOL {
-    log_once_if_needed();
-    let orig = ORIG_QPC.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0;
-    }
-    let mut real: i64 = 0;
-    let ret = (std::mem::transmute::<u64, unsafe extern "system" fn(*mut i64) -> BOOL>(orig))(&mut real);
-    let scaled = scale(&S_QPC, real as u64, get_speed());
-    *out = scaled as i64;
-    ret
-}
-
 unsafe extern "system" fn hooked_get_system_time_as_file_time(out: *mut u64) {
     log_once_if_needed();
     let orig = ORIG_GSATFT.load(Ordering::Relaxed);
@@ -281,191 +238,6 @@ unsafe extern "system" fn hooked_get_system_time_precise_as_file_time(out: *mut 
     (std::mem::transmute::<u64, unsafe extern "system" fn(*mut u64)>(orig))(&mut real);
     let scaled = scale(&S_GSPAFT, real, get_speed());
     *out = scaled;
-}
-
-// ============ 等待/定时类（time / 倍率，0 与 INFINITE 不缩放） ============
-
-unsafe extern "system" fn hooked_sleep(ms: DWORD) {
-    log_once_if_needed();
-    let orig = ORIG_SLEEP.load(Ordering::Relaxed);
-    if orig == 0 {
-        return;
-    }
-    let speed = get_speed();
-    let scaled = if speed > 1.0 { (ms as f64 / speed) as DWORD } else { ms };
-    (std::mem::transmute::<u64, unsafe extern "system" fn(DWORD)>(orig))(scaled);
-}
-
-unsafe extern "system" fn hooked_sleep_ex(ms: DWORD, alertable: BOOL) -> DWORD {
-    log_once_if_needed();
-    let orig = ORIG_SLEEPEX.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0;
-    }
-    let speed = get_speed();
-    let scaled = if speed > 1.0 { (ms as f64 / speed) as DWORD } else { ms };
-    (std::mem::transmute::<u64, unsafe extern "system" fn(DWORD, BOOL) -> DWORD>(orig))(scaled, alertable)
-}
-
-unsafe extern "system" fn hooked_wait_for_single_object(h: HANDLE, ms: DWORD) -> DWORD {
-    log_once_if_needed();
-    let orig = ORIG_WFSO.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0xFFFFFFFF;
-    }
-    let scaled = scale_wait(ms);
-    (std::mem::transmute::<u64, unsafe extern "system" fn(HANDLE, DWORD) -> DWORD>(orig))(h, scaled)
-}
-
-unsafe extern "system" fn hooked_wait_for_single_object_ex(h: HANDLE, ms: DWORD, alertable: BOOL) -> DWORD {
-    log_once_if_needed();
-    let orig = ORIG_WFSOEX.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0xFFFFFFFF;
-    }
-    let scaled = scale_wait(ms);
-    (std::mem::transmute::<u64, unsafe extern "system" fn(HANDLE, DWORD, BOOL) -> DWORD>(orig))(h, scaled, alertable)
-}
-
-unsafe extern "system" fn hooked_wait_for_multiple_objects(
-    count: DWORD,
-    handles: *const HANDLE,
-    wait_all: BOOL,
-    ms: DWORD,
-) -> DWORD {
-    log_once_if_needed();
-    let orig = ORIG_WFMO.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0xFFFFFFFF;
-    }
-    let scaled = scale_wait(ms);
-    (std::mem::transmute::<u64, unsafe extern "system" fn(DWORD, *const HANDLE, BOOL, DWORD) -> DWORD>(orig))(
-        count, handles, wait_all, scaled,
-    )
-}
-
-unsafe extern "system" fn hooked_wait_for_multiple_objects_ex(
-    count: DWORD,
-    handles: *const HANDLE,
-    wait_all: BOOL,
-    ms: DWORD,
-    alertable: BOOL,
-) -> DWORD {
-    log_once_if_needed();
-    let orig = ORIG_WFMOEX.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0xFFFFFFFF;
-    }
-    let scaled = scale_wait(ms);
-    (std::mem::transmute::<u64, unsafe extern "system" fn(DWORD, *const HANDLE, BOOL, DWORD, BOOL) -> DWORD>(orig))(
-        count, handles, wait_all, scaled, alertable,
-    )
-}
-
-unsafe extern "system" fn hooked_set_timer(hwnd: HANDLE, id: UINT_PTR, elapse: UINT, proc: *mut c_void) -> UINT_PTR {
-    log_once_if_needed();
-    let orig = ORIG_SETTIMER.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0;
-    }
-    let speed = get_speed();
-    let scaled = if speed > 1.0 { (elapse as f64 / speed) as UINT } else { elapse };
-    (std::mem::transmute::<u64, unsafe extern "system" fn(HANDLE, UINT_PTR, UINT, *mut c_void) -> UINT_PTR>(orig))(
-        hwnd, id, scaled, proc,
-    )
-}
-
-unsafe extern "system" fn hooked_time_set_event(
-    delay: UINT,
-    resolution: UINT,
-    proc: *mut c_void,
-    user: usize,
-    flags: UINT,
-) -> MMRESULT {
-    log_once_if_needed();
-    let orig = ORIG_TIMESETEVENT.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0;
-    }
-    let speed = get_speed();
-    let scaled = if speed > 1.0 { (delay as f64 / speed) as UINT } else { delay };
-    (std::mem::transmute::<u64, unsafe extern "system" fn(UINT, UINT, *mut c_void, usize, UINT) -> MMRESULT>(orig))(
-        scaled, resolution, proc, user, flags,
-    )
-}
-
-unsafe extern "system" fn hooked_set_waitable_timer(
-    h: HANDLE,
-    due: *const LARGE_INTEGER,
-    period: LONG,
-    routine: *mut c_void,
-    arg: *mut c_void,
-    resume: BOOL,
-) -> BOOL {
-    log_once_if_needed();
-    let orig = ORIG_SETWAITABLETIMER.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0;
-    }
-    if due.is_null() {
-        return (std::mem::transmute::<u64, unsafe extern "system" fn(HANDLE, *const LARGE_INTEGER, LONG, *mut c_void, *mut c_void, BOOL) -> BOOL>(orig))(
-            h, due, period, routine, arg, resume,
-        );
-    }
-    let speed = get_speed();
-    let mut scaled_due = LARGE_INTEGER { QuadPart: (*due).QuadPart };
-    if speed > 1.0 {
-        scaled_due.QuadPart = (scaled_due.QuadPart as f64 / speed) as i64;
-    }
-    (std::mem::transmute::<u64, unsafe extern "system" fn(HANDLE, *const LARGE_INTEGER, LONG, *mut c_void, *mut c_void, BOOL) -> BOOL>(orig))(
-        h, &scaled_due, period, routine, arg, resume,
-    )
-}
-
-unsafe extern "system" fn hooked_set_waitable_timer_ex(
-    h: HANDLE,
-    due: *const LARGE_INTEGER,
-    period: LONG,
-    routine: *mut c_void,
-    arg: *mut c_void,
-    wake: *mut c_void,
-    tolerable: ULONG,
-) -> BOOL {
-    log_once_if_needed();
-    let orig = ORIG_SETWAITABLETIMEREX.load(Ordering::Relaxed);
-    if orig == 0 {
-        return 0;
-    }
-    if due.is_null() {
-        return (std::mem::transmute::<u64, unsafe extern "system" fn(HANDLE, *const LARGE_INTEGER, LONG, *mut c_void, *mut c_void, *mut c_void, ULONG) -> BOOL>(orig))(
-            h, due, period, routine, arg, wake, tolerable,
-        );
-    }
-    let speed = get_speed();
-    let mut scaled_due = LARGE_INTEGER { QuadPart: (*due).QuadPart };
-    if speed > 1.0 {
-        scaled_due.QuadPart = (scaled_due.QuadPart as f64 / speed) as i64;
-    }
-    (std::mem::transmute::<u64, unsafe extern "system" fn(HANDLE, *const LARGE_INTEGER, LONG, *mut c_void, *mut c_void, *mut c_void, ULONG) -> BOOL>(orig))(
-        h, &scaled_due, period, routine, arg, wake, tolerable,
-    )
-}
-
-/// 等待超时缩放：0 与 INFINITE 不缩放，其余 `ms / speed`（向上取整到至少 1ms，避免除到 0）。
-fn scale_wait(ms: DWORD) -> DWORD {
-    if ms == 0 || ms == INFINITE {
-        return ms;
-    }
-    let speed = get_speed();
-    if speed <= 1.0 {
-        return ms;
-    }
-    let scaled = (ms as f64 / speed) as DWORD;
-    if scaled == 0 {
-        1
-    } else {
-        scaled
-    }
 }
 
 // ============ Hook 安装（DllMain 同步） ============
@@ -506,30 +278,19 @@ pub extern "system" fn DllMain(
     if reason == 1 {
         // DLL_PROCESS_ATTACH：同步安装所有 hook（此时 Flash 尚未运行，无竞态）。
         unsafe {
+            // 把 timeGetTime 精度从默认 15.6ms 提到 1ms，避免高倍率下粒度被放大。
+            timeBeginPeriod(1);
+
             MH_Initialize();
             let mut targets: [*mut c_void; 32] = [std::ptr::null_mut(); 32];
             let mut n: usize = 0;
 
-            // 时间读取（7）
             create_hook("winmm.dll", b"timeGetTime\0", hooked_time_get_time as *mut c_void, &ORIG_TIMEGETTIME, &mut targets, &mut n);
             create_hook("user32.dll", b"GetMessageTime\0", hooked_get_message_time as *mut c_void, &ORIG_GETMESSAGETIME, &mut targets, &mut n);
             create_hook("kernel32.dll", b"GetTickCount\0", hooked_get_tick_count as *mut c_void, &ORIG_GETTICKCOUNT, &mut targets, &mut n);
             create_hook("kernel32.dll", b"GetTickCount64\0", hooked_get_tick_count64 as *mut c_void, &ORIG_GETTICKCOUNT64, &mut targets, &mut n);
-            create_hook("kernel32.dll", b"QueryPerformanceCounter\0", hooked_query_performance_counter as *mut c_void, &ORIG_QPC, &mut targets, &mut n);
             create_hook("kernel32.dll", b"GetSystemTimeAsFileTime\0", hooked_get_system_time_as_file_time as *mut c_void, &ORIG_GSATFT, &mut targets, &mut n);
             create_hook("kernel32.dll", b"GetSystemTimePreciseAsFileTime\0", hooked_get_system_time_precise_as_file_time as *mut c_void, &ORIG_GSPAFT, &mut targets, &mut n);
-
-            // 等待/定时（10）
-            create_hook("kernel32.dll", b"Sleep\0", hooked_sleep as *mut c_void, &ORIG_SLEEP, &mut targets, &mut n);
-            create_hook("kernel32.dll", b"SleepEx\0", hooked_sleep_ex as *mut c_void, &ORIG_SLEEPEX, &mut targets, &mut n);
-            create_hook("kernel32.dll", b"WaitForSingleObject\0", hooked_wait_for_single_object as *mut c_void, &ORIG_WFSO, &mut targets, &mut n);
-            create_hook("kernel32.dll", b"WaitForSingleObjectEx\0", hooked_wait_for_single_object_ex as *mut c_void, &ORIG_WFSOEX, &mut targets, &mut n);
-            create_hook("kernel32.dll", b"WaitForMultipleObjects\0", hooked_wait_for_multiple_objects as *mut c_void, &ORIG_WFMO, &mut targets, &mut n);
-            create_hook("kernel32.dll", b"WaitForMultipleObjectsEx\0", hooked_wait_for_multiple_objects_ex as *mut c_void, &ORIG_WFMOEX, &mut targets, &mut n);
-            create_hook("user32.dll", b"SetTimer\0", hooked_set_timer as *mut c_void, &ORIG_SETTIMER, &mut targets, &mut n);
-            create_hook("winmm.dll", b"timeSetEvent\0", hooked_time_set_event as *mut c_void, &ORIG_TIMESETEVENT, &mut targets, &mut n);
-            create_hook("kernel32.dll", b"SetWaitableTimer\0", hooked_set_waitable_timer as *mut c_void, &ORIG_SETWAITABLETIMER, &mut targets, &mut n);
-            create_hook("kernel32.dll", b"SetWaitableTimerEx\0", hooked_set_waitable_timer_ex as *mut c_void, &ORIG_SETWAITABLETIMEREX, &mut targets, &mut n);
 
             HOOK_COUNT.store(n as u64, Ordering::Relaxed);
 
@@ -545,6 +306,7 @@ pub extern "system" fn DllMain(
 
 // ============ Win32 FFI 导入 ============
 
+#[link(name = "winmm")]
 extern "system" {
     fn OpenFileMappingW(dwDesiredAccess: u32, bInheritHandle: i32, lpName: *const u16) -> *mut c_void;
     fn MapViewOfFile(
@@ -555,6 +317,8 @@ extern "system" {
         dwNumberOfBytesToMap: usize,
     ) -> *mut c_void;
     fn CloseHandle(hObject: *mut c_void) -> i32;
+    // winmm.dll：设置系统定时器分辨率（1ms），提高 timeGetTime 精度。
+    fn timeBeginPeriod(uPeriod: u32) -> u32;
 }
 
 const FILE_MAP_READ: u32 = 0x0004;

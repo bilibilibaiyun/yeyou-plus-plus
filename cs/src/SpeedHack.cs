@@ -94,20 +94,16 @@ namespace YeyouPlusPlus
                     {
                         continue;
                     }
-                    // 精确注入：只注入真正加载了 Flash 插件（pepflashplayer.dll）的进程。
-                    // 原因：变速 DLL 恢复完整 17 函数后（含 QueryPerformanceCounter），
-                    // 若广撒网注入到 GPU/渲染进程，QPC 被加速会让 Chromium 渲染合成时间轴
-                    // 错乱、画面严重卡顿；精确注入只影响 Flash 游戏逻辑与帧循环。
-                    // Toolhelp32 模块检测的 CharSet 已修复（CharSet.Unicode），可准确识别。
-                    // 注入周期 1 秒 + 导航/加载事件即时触发，保证 Flash 进程加载后及时被注入。
-                    if (!HasFlashModule(proc.Id))
-                    {
-                        continue;
-                    }
+                    // 广撒网注入所有 CEF 子进程：变速 DLL 已移除 QPC 与等待/定时函数，
+                    // 只 hook timeGetTime/GetTickCount 等时间读取，对 GPU/渲染进程的
+                    // 渲染合成影响极小（不会像 hook QPC 那样卡顿）。
+                    // 广撒网保证进入副本时新建的 Flash 插件进程必然被注入——
+                    // 「精确检测 pepflashplayer.dll」会因加载时机窗口漏掉副本的新进程，
+                    // 导致进副本后变速完全失效（v2.1.6 的教训）。
                     if (Inject(proc.Id, DllPath))
                     {
                         _injectedPids.Add(proc.Id);
-                        Log("注入成功 PID=" + proc.Id + "（Flash 进程）");
+                        Log("注入成功 PID=" + proc.Id);
                     }
                     else
                     {
