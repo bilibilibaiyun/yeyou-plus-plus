@@ -72,6 +72,24 @@ namespace YeyouPlusPlus
             return item;
         }
 
+        /// <summary>重命名影子（仅改备注名称，不动缓存目录与登录状态）。</summary>
+        public static void Rename(string id, string newName)
+        {
+            var item = _items.FirstOrDefault(x => x.Id == id);
+            if (item == null)
+            {
+                return;
+            }
+            var trimmed = string.IsNullOrWhiteSpace(newName) ? string.Empty : newName.Trim();
+            if (trimmed.Length == 0)
+            {
+                // 名称为空则回退为默认「影子」。
+                trimmed = "影子";
+            }
+            item.Name = trimmed;
+            Save();
+        }
+
         /// <summary>删除影子（元数据 + 缓存目录）。</summary>
         public static void Remove(string id)
         {

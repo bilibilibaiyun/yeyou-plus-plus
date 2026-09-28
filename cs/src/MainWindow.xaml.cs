@@ -951,6 +951,7 @@ namespace YeyouPlusPlus
                 var grid = new Grid { Margin = new Thickness(0, 0, 0, 6) };
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
                 var openBtn = new Button
                 {
@@ -964,6 +965,21 @@ namespace YeyouPlusPlus
                 Grid.SetColumn(openBtn, 0);
                 grid.Children.Add(openBtn);
 
+                var renameBtn = new Button
+                {
+                    Content = "\uE70F",
+                    FontFamily = (FontFamily)FindResource("IconFont"),
+                    Tag = sh.Id,
+                    Width = 28,
+                    Height = 28,
+                    Margin = new Thickness(4, 0, 0, 0),
+                    FontSize = 11,
+                    ToolTip = "重命名影子"
+                };
+                renameBtn.Click += ShadowRename_Click;
+                Grid.SetColumn(renameBtn, 1);
+                grid.Children.Add(renameBtn);
+
                 var delBtn = new Button
                 {
                     Content = "\uE74D",
@@ -976,7 +992,7 @@ namespace YeyouPlusPlus
                     ToolTip = "删除影子"
                 };
                 delBtn.Click += ShadowDelete_Click;
-                Grid.SetColumn(delBtn, 1);
+                Grid.SetColumn(delBtn, 2);
                 grid.Children.Add(delBtn);
 
                 ShadowList.Children.Add(grid);
@@ -992,6 +1008,26 @@ namespace YeyouPlusPlus
                 {
                     OpenShadow(sh);
                 }
+            }
+        }
+
+        private void ShadowRename_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is Button btn) || !(btn.Tag is string id))
+            {
+                return;
+            }
+            var sh = ShadowManager.Items.FirstOrDefault(x => x.Id == id);
+            if (sh == null)
+            {
+                return;
+            }
+            var win = new ShadowWindow(sh.Name) { Owner = this };
+            if (win.ShowDialog() == true)
+            {
+                ShadowManager.Rename(id, win.ShadowName);
+                RenderShadowList();
+                SetStatus("已重命名影子：" + ShadowManager.Items.FirstOrDefault(x => x.Id == id)?.Name);
             }
         }
 

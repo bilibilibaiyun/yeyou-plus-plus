@@ -6,20 +6,20 @@
         Background="{DynamicResource Theme.WindowBg}"
         Foreground="{DynamicResource Theme.TextPrimary}">
     <StackPanel Margin="24,22">
-        <TextBlock Text="为当前网站创建一个影子" FontSize="14" FontWeight="SemiBold"
+        <TextBlock x:Name="TitleText" Text="为当前网站创建一个影子" FontSize="14" FontWeight="SemiBold"
                    Foreground="{DynamicResource Theme.TextPrimary}"/>
-        <TextBlock Text="影子拥有独立的登录状态和数据，与原浏览互不影响、长期保存。"
+        <TextBlock x:Name="DescText" Text="影子拥有独立的登录状态和数据，与原浏览互不影响、长期保存。"
                    FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"
                    Foreground="{DynamicResource Theme.TextSecondary}"/>
 
-        <TextBlock Text="备注名称（可选）" FontSize="12" Margin="0,18,0,0"
+        <TextBlock x:Name="LabelText" Text="备注名称（可选）" FontSize="12" Margin="0,18,0,0"
                    Foreground="{DynamicResource Theme.TextSecondary}"/>
         <TextBox x:Name="NameBox" Height="34" Margin="0,8,0,0"
                  VerticalContentAlignment="Center" MaxLength="30"/>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
             <Button Content="取消" Width="84" Height="34" Margin="0,0,8,0" Click="CancelButton_Click"/>
-            <Button Content="创建" Width="84" Height="34" Style="{StaticResource PrimaryButton}"
+            <Button x:Name="ConfirmButton" Content="创建" Width="84" Height="34" Style="{StaticResource PrimaryButton}"
                     Click="CreateButton_Click"/>
         </StackPanel>
     </StackPanel>
