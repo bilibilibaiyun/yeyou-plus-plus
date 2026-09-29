@@ -15,8 +15,10 @@
 //!    - 不 hook Sleep/SetTimer/WaitFor*/SetWaitableTimer：Flash 内部定时器
 //!      靠 timeGetTime 差值驱动，hook 这些会破坏资源加载与帧节流，导致
 //!      变速失效或卡顿。
-//! 4. DllMain 里调用 timeBeginPeriod(1)：把 timeGetTime 精度从默认 15.6ms
-//!    提到 1ms，避免高倍率下时间粒度被放大导致「倍数不准、时快时慢」。
+//! 4. 主程序在启动时（InitCef 之前）调用 timeBeginPeriod(1)：把系统定时器
+//!    分辨率提到 1ms，使 Flash 初始化时判定 timeGetTime 精度足够、选其为
+//!    主时间源，从而让 timeGetTime hook 真正驱动游戏变速（CN104636138B）。
+//!    本 DLL 注入时机晚于 Flash 初始化，故不再在 DllMain 里调用。
 //!
 //! 倍率通过命名共享内存 `Local\YeyouSpeedHack`（8 字节 f64）从主程序下发。
 
@@ -165,6 +167,42 @@ static S_GETTICKCOUNT64: Scaler = scaler_new();
 static S_GSATFT: Scaler = scaler_new();
 static S_GSPAFT: Scaler = scaler_new();
 
+// ============ 调用频率统计（诊断：确定 Flash 实际高频使用哪个时间函数） ============
+
+static CNT_TIMEGETTIME: AtomicU64 = AtomicU64::new(0);
+static CNT_GETMESSAGETIME: AtomicU64 = AtomicU64::new(0);
+static CNT_GETTICKCOUNT: AtomicU64 = AtomicU64::new(0);
+static CNT_GETTICKCOUNT64: AtomicU64 = AtomicU64::new(0);
+static CNT_GSATFT: AtomicU64 = AtomicU64::new(0);
+static CNT_GSPAFT: AtomicU64 = AtomicU64::new(0);
+
+/// 上次写统计日志的真实 tick（用于节流，约 5 秒一次）。
+static LAST_STAT_TICK: AtomicU64 = AtomicU64::new(0);
+
+/// 每约 5 秒把 6 个时间函数的累计调用次数写入日志，用于判断 Flash 主时间源。
+fn maybe_stats(now_tick: u64) {
+    let last = LAST_STAT_TICK.load(Ordering::Relaxed);
+    if now_tick.wrapping_sub(last) < 5000 {
+        return;
+    }
+    if LAST_STAT_TICK
+        .compare_exchange(last, now_tick, Ordering::Relaxed, Ordering::Relaxed)
+        .is_err()
+    {
+        return;
+    }
+    log_line(&format!(
+        "[stats] timeGetTime={} GetTickCount={} GetTickCount64={} GSATFT={} GSPAFT={} GetMessageTime={} speed={}",
+        CNT_TIMEGETTIME.load(Ordering::Relaxed),
+        CNT_GETTICKCOUNT.load(Ordering::Relaxed),
+        CNT_GETTICKCOUNT64.load(Ordering::Relaxed),
+        CNT_GSATFT.load(Ordering::Relaxed),
+        CNT_GSPAFT.load(Ordering::Relaxed),
+        CNT_GETMESSAGETIME.load(Ordering::Relaxed),
+        get_speed(),
+    ));
+}
+
 // ============ 原函数（trampoline） ============
 
 static ORIG_TIMEGETTIME: AtomicU64 = AtomicU64::new(0);
@@ -183,6 +221,8 @@ unsafe extern "system" fn hooked_time_get_time() -> DWORD {
         return 0;
     }
     let real = (std::mem::transmute::<u64, unsafe extern "system" fn() -> DWORD>(orig))() as u64;
+    CNT_TIMEGETTIME.fetch_add(1, Ordering::Relaxed);
+    maybe_stats(real);
     scale(&S_TIMEGETTIME, real, get_speed()) as DWORD
 }
 
@@ -193,6 +233,7 @@ unsafe extern "system" fn hooked_get_message_time() -> i32 {
         return 0;
     }
     let real = (std::mem::transmute::<u64, unsafe extern "system" fn() -> i32>(orig))() as i64;
+    CNT_GETMESSAGETIME.fetch_add(1, Ordering::Relaxed);
     scale(&S_GETMESSAGETIME, real as u64, get_speed()) as i32
 }
 
@@ -203,6 +244,7 @@ unsafe extern "system" fn hooked_get_tick_count() -> DWORD {
         return 0;
     }
     let real = (std::mem::transmute::<u64, unsafe extern "system" fn() -> DWORD>(orig))() as u64;
+    CNT_GETTICKCOUNT.fetch_add(1, Ordering::Relaxed);
     scale(&S_GETTICKCOUNT, real, get_speed()) as DWORD
 }
 
@@ -213,6 +255,7 @@ unsafe extern "system" fn hooked_get_tick_count64() -> u64 {
         return 0;
     }
     let real = (std::mem::transmute::<u64, unsafe extern "system" fn() -> u64>(orig))();
+    CNT_GETTICKCOUNT64.fetch_add(1, Ordering::Relaxed);
     scale(&S_GETTICKCOUNT64, real, get_speed())
 }
 
@@ -224,6 +267,7 @@ unsafe extern "system" fn hooked_get_system_time_as_file_time(out: *mut u64) {
     }
     let mut real: u64 = 0;
     (std::mem::transmute::<u64, unsafe extern "system" fn(*mut u64)>(orig))(&mut real);
+    CNT_GSATFT.fetch_add(1, Ordering::Relaxed);
     let scaled = scale(&S_GSATFT, real, get_speed());
     *out = scaled;
 }
@@ -236,6 +280,7 @@ unsafe extern "system" fn hooked_get_system_time_precise_as_file_time(out: *mut 
     }
     let mut real: u64 = 0;
     (std::mem::transmute::<u64, unsafe extern "system" fn(*mut u64)>(orig))(&mut real);
+    CNT_GSPAFT.fetch_add(1, Ordering::Relaxed);
     let scaled = scale(&S_GSPAFT, real, get_speed());
     *out = scaled;
 }
@@ -278,9 +323,6 @@ pub extern "system" fn DllMain(
     if reason == 1 {
         // DLL_PROCESS_ATTACH：同步安装所有 hook（此时 Flash 尚未运行，无竞态）。
         unsafe {
-            // 把 timeGetTime 精度从默认 15.6ms 提到 1ms，避免高倍率下粒度被放大。
-            timeBeginPeriod(1);
-
             MH_Initialize();
             let mut targets: [*mut c_void; 32] = [std::ptr::null_mut(); 32];
             let mut n: usize = 0;
@@ -306,7 +348,6 @@ pub extern "system" fn DllMain(
 
 // ============ Win32 FFI 导入 ============
 
-#[link(name = "winmm")]
 extern "system" {
     fn OpenFileMappingW(dwDesiredAccess: u32, bInheritHandle: i32, lpName: *const u16) -> *mut c_void;
     fn MapViewOfFile(
@@ -317,8 +358,6 @@ extern "system" {
         dwNumberOfBytesToMap: usize,
     ) -> *mut c_void;
     fn CloseHandle(hObject: *mut c_void) -> i32;
-    // winmm.dll：设置系统定时器分辨率（1ms），提高 timeGetTime 精度。
-    fn timeBeginPeriod(uPeriod: u32) -> u32;
 }
 
 const FILE_MAP_READ: u32 = 0x0004;

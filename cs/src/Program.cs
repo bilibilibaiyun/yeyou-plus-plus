@@ -2,6 +2,7 @@ using CefSharp;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 
 namespace YeyouPlusPlus
@@ -11,6 +12,15 @@ namespace YeyouPlusPlus
     /// </summary>
     public static class Program
     {
+        /// <summary>
+        /// 设置系统定时器最小分辨率（1ms）。
+        /// 必须在 Flash 初始化之前调用，使 Flash 判定 timeGetTime 精度足够并选为主时间源，
+        /// 从而让 speedhack 的 timeGetTime hook 真正驱动游戏变速（参考 CN104636138B）。
+        /// 该设置是系统级（winmm）调用，返回 TIMERR_NOERROR(0) 表示成功。
+        /// </summary>
+        [DllImport("winmm.dll")]
+        private static extern uint timeBeginPeriod(uint uPeriod);
+
         [STAThread]
         public static void Main(string[] args)
         {
@@ -18,6 +28,11 @@ namespace YeyouPlusPlus
             {
                 // 覆盖安装后恢复备份的用户数据（账号/收藏/配置），必须在 CEF 初始化前完成。
                 DataBackup.RestoreIfNeeded();
+
+                // 在 InitCef（进而启动 CEF 子进程/Flash 插件进程）之前把系统定时器分辨率提到 1ms。
+                // timeBeginPeriod 是系统级设置，主进程启动即调用，保证所有 CEF 子进程
+                // 在 Flash 初始化前系统定时器精度已是 1ms。
+                timeBeginPeriod(1);
 
                 InitCef();
 
