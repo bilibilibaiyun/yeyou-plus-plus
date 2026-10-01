@@ -12,7 +12,7 @@ namespace YeyouPlusPlus
     /// 用 HwndHost 把 WinForms 版 ChromiumWebBrowser 桥接到 WPF，
     /// 避免 CefSharp.Wpf 的 AirSpace 问题（参考 CefFlashBrowser）。
     /// </summary>
-    public class BrowserHost : HwndHost
+    public class BrowserHost : HwndHost, ILifeSpanHandler
     {
         private readonly ChromiumWebBrowser browser;
         private string title;
@@ -22,6 +22,8 @@ namespace YeyouPlusPlus
         public event EventHandler AddressChanged;
         public event EventHandler TitleChanged;
         public event EventHandler LoadingStateChanged;
+        /// <summary>网页请求在新窗口（target=_blank / window.open）打开时触发，参数为目标 URL。</summary>
+        public event Action<string> PopupRequested;
 
         public string Address => browser.Address;
         public string Title => title;
@@ -41,6 +43,9 @@ namespace YeyouPlusPlus
                 : new ChromiumWebBrowser(initialUrl, requestContext);
             browser.CreateControl();
 #pragma warning restore CS0618
+
+            // 拦截 target=_blank / window.open：取消 CEF 默认弹窗，改走 PopupRequested 在新标签打开。
+            browser.LifeSpanHandler = this;
 
             browser.AddressChanged += OnBrowserAddressChanged;
             browser.TitleChanged += OnBrowserTitleChanged;
@@ -176,6 +181,36 @@ namespace YeyouPlusPlus
             {
                 pendingZoomPercent = percent;
             }
+        }
+
+        // ---- ILifeSpanHandler：把新窗口请求转成新标签页打开 ----
+
+        /// <summary>网页请求创建弹窗（target=_blank / window.open）时回调。</summary>
+        public bool OnBeforePopup(IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame,
+            string targetUrl, string targetFrameName, WindowOpenDisposition targetDisposition,
+            bool userGesture, IPopupFeatures popupFeatures, IWindowInfo windowInfo,
+            IBrowserSettings browserSettings, ref bool noJavascriptAccess, out IWebBrowser newBrowser)
+        {
+            // 返回 true 取消 CEF 默认的新窗口创建，把目标 URL 交给 MainWindow 在新标签打开。
+            newBrowser = null;
+            if (!string.IsNullOrEmpty(targetUrl))
+            {
+                PopupRequested?.Invoke(targetUrl);
+            }
+            return true;
+        }
+
+        public void OnAfterCreated(IWebBrowser chromiumWebBrowser, IBrowser browser)
+        {
+        }
+
+        public bool DoClose(IWebBrowser chromiumWebBrowser, IBrowser browser)
+        {
+            return false;
+        }
+
+        public void OnBeforeClose(IWebBrowser chromiumWebBrowser, IBrowser browser)
+        {
         }
 
     [DllImport("user32.dll", SetLastError = true)]

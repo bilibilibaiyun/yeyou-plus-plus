@@ -4,8 +4,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net;
+using System.Net.Http;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace YeyouPlusPlus
 {
@@ -34,6 +36,14 @@ namespace YeyouPlusPlus
         private static readonly string ApiUrl =
             "https://api.github.com/repos/" + RepoOwner + "/" + RepoName + "/releases?per_page=30";
 
+        /// <summary>复用连接的单例 HttpClient；默认超时 5 分钟（下载安装包需要更长时间）。</summary>
+        private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+
+        static UpdateChecker()
+        {
+            Http.DefaultRequestHeaders.UserAgent.ParseAdd("YeyouPlusPlus-Updater");
+        }
+
         /// <summary>当前程序版本（取程序集版本，格式 X.Y.Z）。</summary>
         public static string CurrentVersion
         {
@@ -47,44 +57,46 @@ namespace YeyouPlusPlus
         /// <summary>拉取全部 Release（按 GitHub 返回顺序，最新在前）。网络失败抛异常。</summary>
         public static List<ReleaseInfo> GetReleases()
         {
-            var req = (HttpWebRequest)WebRequest.Create(ApiUrl);
-            req.UserAgent = "YeyouPlusPlus-Updater";
-            req.Accept = "application/vnd.github+json";
-            req.Timeout = 15000;
-            req.ReadWriteTimeout = 15000;
-
-            using (var resp = req.GetResponse())
-            using (var sr = new StreamReader(resp.GetResponseStream()))
+            // 检查更新用 15s 超时（下载用 HttpClient 默认的 5 分钟）。
+            using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+            using (var req = new HttpRequestMessage(HttpMethod.Get, ApiUrl))
             {
-                var raw = JsonConvert.DeserializeObject<List<GitHubRelease>>(sr.ReadToEnd())
-                    ?? new List<GitHubRelease>();
-
-                var result = new List<ReleaseInfo>();
-                foreach (var r in raw)
+                req.Headers.Accept.ParseAdd("application/vnd.github+json");
+                using (var resp = Http.SendAsync(req, HttpCompletionOption.ResponseContentRead, cts.Token)
+                    .GetAwaiter().GetResult())
                 {
-                    if (r.draft)
-                    {
-                        continue;
-                    }
+                    resp.EnsureSuccessStatusCode();
+                    var json = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                    var raw = JsonConvert.DeserializeObject<List<GitHubRelease>>(json)
+                        ?? new List<GitHubRelease>();
 
-                    var asset = (r.assets ?? new List<GitHubAsset>()).FirstOrDefault(a =>
-                        a.name != null && a.name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
-                    if (asset == null)
+                    var result = new List<ReleaseInfo>();
+                    foreach (var r in raw)
                     {
-                        continue;
-                    }
+                        if (r.draft)
+                        {
+                            continue;
+                        }
 
-                    result.Add(new ReleaseInfo
-                    {
-                        Tag = (r.tag_name ?? string.Empty).TrimStart('v'),
-                        Name = string.IsNullOrWhiteSpace(r.name) ? r.tag_name : r.name,
-                        IsStable = !r.prerelease,
-                        PublishedAt = ParseDate(r.published_at),
-                        AssetUrl = asset.browser_download_url,
-                        AssetSize = asset.size
-                    });
+                        var asset = (r.assets ?? new List<GitHubAsset>()).FirstOrDefault(a =>
+                            a.name != null && a.name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+                        if (asset == null)
+                        {
+                            continue;
+                        }
+
+                        result.Add(new ReleaseInfo
+                        {
+                            Tag = (r.tag_name ?? string.Empty).TrimStart('v'),
+                            Name = string.IsNullOrWhiteSpace(r.name) ? r.tag_name : r.name,
+                            IsStable = !r.prerelease,
+                            PublishedAt = ParseDate(r.published_at),
+                            AssetUrl = asset.browser_download_url,
+                            AssetSize = asset.size
+                        });
+                    }
+                    return result;
                 }
-                return result;
             }
         }
 
@@ -114,15 +126,14 @@ namespace YeyouPlusPlus
         /// </summary>
         public static void DownloadFile(string url, string destPath, Action<int> progress)
         {
-            var req = (HttpWebRequest)WebRequest.Create(url);
-            req.UserAgent = "YeyouPlusPlus-Updater";
-            req.Timeout = 30000;
-            req.ReadWriteTimeout = 60000;
-
-            using (var resp = req.GetResponse())
+            // ResponseHeadersRead：尽早拿到响应流（不等正文），实现边下边回调进度；
+            // 避免 HttpWebRequest 的 GetResponse 在 DNS/连接/TLS/重定向阶段无反馈地卡住。
+            using (var resp = Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead)
+                .GetAwaiter().GetResult())
             {
-                long total = resp.ContentLength;
-                using (var src = resp.GetResponseStream())
+                resp.EnsureSuccessStatusCode();
+                long? total = resp.Content.Headers.ContentLength;
+                using (var src = resp.Content.ReadAsStreamAsync().GetAwaiter().GetResult())
                 using (var dst = new FileStream(destPath, FileMode.Create, FileAccess.Write))
                 {
                     var buffer = new byte[65536];
@@ -133,9 +144,10 @@ namespace YeyouPlusPlus
                     {
                         dst.Write(buffer, 0, n);
                         read += n;
-                        if (total > 0 && progress != null)
+                        // ContentLength 为 null 时不回调进度（保持 0），下载完成后统一报 100。
+                        if (total.HasValue && total.Value > 0 && progress != null)
                         {
-                            var pct = (int)(read * 100 / total);
+                            var pct = (int)(read * 100 / total.Value);
                             if (pct != lastPct)
                             {
                                 lastPct = pct;

@@ -13,7 +13,7 @@ AppId={{7C1F2A64-9B33-4E7E-A0D1-8E2B4C6D1A0F}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={sd}\页游++
+DefaultDirName={sd}\YeyouPlusPlus
 DefaultGroupName=页游++
 UninstallDisplayIcon={app}\{#MyAppExeName}
 OutputDir=..\artifacts
@@ -63,7 +63,7 @@ function InitializeSetup(): Boolean;
 begin
   Result := True;
   if RegKeyExists(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{{7C1F2A64-9B33-4E7E-A0D1-8E2B4C6D1A0F}_is1')
-     or DirExists(ExpandConstant('{sd}\页游++')) then
+     or DirExists(ExpandConstant('{sd}\YeyouPlusPlus')) then
   begin
     RegWriteStringValue(HKCU, RegKey, 'IsUpgrading', '1');
   end;

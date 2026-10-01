@@ -129,6 +129,7 @@ namespace YeyouPlusPlus
             host.AddressChanged += (s, e) => Dispatcher.InvokeAsync(() => OnTabAddressChanged(tab));
             host.TitleChanged += (s, e) => Dispatcher.InvokeAsync(() => OnTabTitleChanged(tab));
             host.LoadingStateChanged += (s, e) => Dispatcher.InvokeAsync(() => OnTabLoadingStateChanged(tab));
+            host.PopupRequested += url => Dispatcher.InvokeAsync(() => OpenInTab(url));
 
             tabs.Add(tab);
             BrowserContainer.Children.Add(host);
@@ -227,11 +228,24 @@ namespace YeyouPlusPlus
             if (tabs.Count == 0)
             {
                 activeTabIndex = -1;
+                RenderTabs(); // 清空标签栏，避免关闭最后一个标签后残留。
                 ShowView("home");
                 return;
             }
 
-            activeTabIndex = Math.Min(index, tabs.Count - 1);
+            if (index == activeTabIndex)
+            {
+                // 关闭的是激活标签：优先激活原 index 的后一个（关闭后落在同一 index），
+                // 若原 index 已是末尾则激活前一个。
+                activeTabIndex = Math.Min(index, tabs.Count - 1);
+            }
+            else if (index < activeTabIndex)
+            {
+                // 关闭的是激活标签之前的标签：激活标签整体左移一位。
+                activeTabIndex--;
+            }
+            // 关闭的是激活标签之后的标签：激活标签位置不变。
+
             ApplyActiveTab();
         }
 
@@ -348,7 +362,16 @@ namespace YeyouPlusPlus
                     Margin = new Thickness(0, 0, 4, 4),
                     Tag = idx
                 };
-                tb.Click += (s, e) => SwitchTab(idx);
+                tb.Click += (s, e) =>
+                {
+                    // 关闭按钮的点击会冒泡到这里（OriginalSource 为 Button）；
+                    // 虽然 closeBtn.Click 已置 e.Handled=true 拦截，这里再兜底一层，
+                    // 确保点 × 只关闭标签、不触发切换（避免关闭后 activeTabIndex 错乱）。
+                    if (!(e.OriginalSource is Button))
+                    {
+                        SwitchTab(idx);
+                    }
+                };
                 TabStrip.Children.Add(tb);
             }
         }
