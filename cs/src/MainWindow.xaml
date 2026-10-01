@@ -64,15 +64,6 @@
                                  Margin="0,3,10,0" Visibility="Collapsed"
                                  ToolTip="发现新的稳定版本"/>
                     </Grid>
-
-                    <Button x:Name="NavExtensionsButton" Style="{StaticResource SidebarButton}"
-                            Click="NavExtensions_Click" ToolTip="扩展">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE71D;" FontFamily="{StaticResource IconFont}"
-                                       FontSize="15" Width="22" TextAlignment="Center"/>
-                            <TextBlock x:Name="NavExtensionsText" Text="扩展" Margin="9,0,0,0"/>
-                        </StackPanel>
-                    </Button>
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -106,7 +97,7 @@
                 </DockPanel>
             </Border>
 
-            <!-- 内容区（主页 / 浏览器 / 设置 / 扩展 四视图） -->
+            <!-- 内容区（主页 / 浏览器 / 设置 三视图） -->
             <Grid Grid.Row="1">
                 <!-- 『主页』 -->
                 <Grid x:Name="HomePanel">
@@ -312,54 +303,6 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- 『扩展』 -->
-                <ScrollViewer x:Name="ExtensionsPanel" Visibility="Collapsed"
-                              VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel MaxWidth="660" Margin="30,24" HorizontalAlignment="Left">
-
-                        <TextBlock Text="扩展" FontSize="24" FontWeight="Bold"
-                                   Foreground="{DynamicResource Theme.TextPrimary}"/>
-
-                        <TextBlock Text="扩展商店" FontSize="13" FontWeight="SemiBold" Margin="0,20,0,8"
-                                   Foreground="{DynamicResource Theme.TextSecondary}"/>
-                        <Border Style="{StaticResource CardBorder}">
-                            <StackPanel>
-                                <TextBlock FontSize="13" TextWrapping="Wrap"
-                                           Foreground="{DynamicResource Theme.TextPrimary}"
-                                           Text="从应用商店下载扩展安装包（.crx），解压到扩展目录后重启本软件即可生效。"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                                    <Button Content="Edge 扩展商店" Height="32" Padding="12,0" Margin="0,0,8,0"
-                                            Click="EdgeStoreButton_Click"/>
-                                    <Button Content="Chrome 网上应用店" Height="32" Padding="12,0" Margin="0,0,8,0"
-                                            Click="ChromeStoreButton_Click"/>
-                                    <Button Content="打开扩展目录" Height="32" Padding="12,0"
-                                            Click="OpenExtDirButton_Click"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <TextBlock Text="已安装" FontSize="13" FontWeight="SemiBold" Margin="0,20,0,8"
-                                   Foreground="{DynamicResource Theme.TextSecondary}"/>
-                        <Border Style="{StaticResource CardBorder}">
-                            <StackPanel>
-                                <ListBox x:Name="ExtensionList" MinHeight="60" MaxHeight="240">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding Name}" FontSize="13"/>
-                                                <TextBlock Text="{Binding Version}" FontSize="11" Margin="8,0,0,0"
-                                                           VerticalAlignment="Center"
-                                                           Foreground="{DynamicResource Theme.TextSecondary}"/>
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                                <TextBlock x:Name="ExtensionEmptyText" Text="尚未安装扩展" FontSize="12"
-                                           Margin="2,6,0,0" Foreground="{DynamicResource Theme.TextSecondary}"/>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
             </Grid>
 
             <!-- 状态栏 -->

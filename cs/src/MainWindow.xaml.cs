@@ -383,11 +383,9 @@ namespace YeyouPlusPlus
             HomePanel.Visibility = view == "home" ? Visibility.Visible : Visibility.Collapsed;
             BrowserView.Visibility = view == "browser" ? Visibility.Visible : Visibility.Collapsed;
             SettingsPanel.Visibility = view == "settings" ? Visibility.Visible : Visibility.Collapsed;
-            ExtensionsPanel.Visibility = view == "extensions" ? Visibility.Visible : Visibility.Collapsed;
 
             NavHomeButton.Tag = view == "home" ? "selected" : null;
             NavSettingsButton.Tag = view == "settings" ? "selected" : null;
-            NavExtensionsButton.Tag = view == "extensions" ? "selected" : null;
 
             // 浏览器视图自动收拢侧边栏，其他视图自动展开。
             var wantCollapsed = view == "browser";
@@ -404,15 +402,10 @@ namespace YeyouPlusPlus
             {
                 RefreshSettingsView();
             }
-            if (view == "extensions")
-            {
-                RefreshExtensionsView();
-            }
         }
 
         private void NavHome_Click(object sender, RoutedEventArgs e) => ShowView("home");
         private void NavSettings_Click(object sender, RoutedEventArgs e) => ShowView("settings");
-        private void NavExtensions_Click(object sender, RoutedEventArgs e) => ShowView("extensions");
 
         private void ToggleSidebarButton_Click(object sender, RoutedEventArgs e) => ToggleSidebar();
 
@@ -439,17 +432,14 @@ namespace YeyouPlusPlus
             SidebarHeader.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
             NavHomeText.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
             NavSettingsText.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
-            NavExtensionsText.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
             ToggleSidebarText.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
             ToggleSidebarIcon.Text = sidebarCollapsed ? "\uE76A" : "\uE76B";
             var pad = sidebarCollapsed ? new Thickness(0, 9, 0, 9) : new Thickness(12, 9, 12, 9);
             var align = sidebarCollapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left;
             NavHomeButton.Padding = pad;
             NavSettingsButton.Padding = pad;
-            NavExtensionsButton.Padding = pad;
             NavHomeButton.HorizontalContentAlignment = align;
             NavSettingsButton.HorizontalContentAlignment = align;
-            NavExtensionsButton.HorizontalContentAlignment = align;
             ToggleSidebarButton.Padding = pad;
             ToggleSidebarButton.HorizontalContentAlignment = align;
         }
@@ -878,31 +868,6 @@ namespace YeyouPlusPlus
             StatusText.Text = text ?? string.Empty;
         }
 
-        // ================= 扩展 =================
-
-        private void RefreshExtensionsView()
-        {
-            var list = ExtensionsManager.GetInstalled();
-            ExtensionList.ItemsSource = list;
-            ExtensionEmptyText.Visibility = list.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        private void EdgeStoreButton_Click(object sender, RoutedEventArgs e)
-        {
-            // 在本软件内部标签页打开扩展商店，不跳转系统默认浏览器。
-            OpenInTab(ExtensionsManager.EdgeStoreUrl);
-        }
-
-        private void ChromeStoreButton_Click(object sender, RoutedEventArgs e)
-        {
-            OpenInTab(ExtensionsManager.ChromeStoreUrl);
-        }
-
-        private void OpenExtDirButton_Click(object sender, RoutedEventArgs e)
-        {
-            ExtensionsManager.OpenFolder();
-        }
-
         // ================= 影子 =================
 
         private void ShadowToggleButton_Click(object sender, RoutedEventArgs e)
@@ -1169,7 +1134,6 @@ namespace YeyouPlusPlus
                 }
                 CopyDir(Path.Combine(oldDir, "icons"), Path.Combine(newPath, "icons"));
                 CopyDir(Path.Combine(oldDir, "downloads"), Path.Combine(newPath, "downloads"));
-                CopyDir(Path.Combine(oldDir, "extensions"), Path.Combine(newPath, "extensions"));
                 CopyDir(Path.Combine(oldDir, "profiles"), Path.Combine(newPath, "profiles"));
 
                 AppSettingsStore.Current.DataDirPath = newPath;
