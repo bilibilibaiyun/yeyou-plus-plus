@@ -191,13 +191,34 @@ namespace YeyouPlusPlus
             bool userGesture, IPopupFeatures popupFeatures, IWindowInfo windowInfo,
             IBrowserSettings browserSettings, ref bool noJavascriptAccess, out IWebBrowser newBrowser)
         {
-            // 返回 true 取消 CEF 默认的新窗口创建，把目标 URL 交给 MainWindow 在新标签打开。
             newBrowser = null;
-            if (!string.IsNullOrEmpty(targetUrl))
+
+            // 只有 target=_blank 之类的新标签请求才转成新标签页打开，
+            // 并取消 CEF 默认的新窗口创建。
+            if (targetDisposition == WindowOpenDisposition.NewForegroundTab ||
+                targetDisposition == WindowOpenDisposition.NewBackgroundTab)
             {
-                PopupRequested?.Invoke(targetUrl);
+                // 仅对普通 http(s) 链接转新标签；about:blank / javascript: / 空串等
+                // 特殊 URL 直接取消即可，避免 OpenInTab 的 ResolveUrl 处理出错。
+                if (IsHttpOrHttpsUrl(targetUrl))
+                {
+                    PopupRequested?.Invoke(targetUrl);
+                }
+                return true;
             }
-            return true;
+
+            // QQ/微信扫码登录等依赖 window.open 的 OAuth 授权窗口（NewPopup/NewWindow），
+            // 以及 Unknown / CurrentTab / SaveToDisk 等其它 disposition，一律放行，
+            // 交给 CEF 默认行为创建真正的弹窗窗口，否则会因 window.opener 引用断裂导致闪退。
+            return false;
+        }
+
+        /// <summary>判断 URL 是否为普通的 http/https 链接。</summary>
+        private static bool IsHttpOrHttpsUrl(string url)
+        {
+            return !string.IsNullOrEmpty(url) &&
+                (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                 url.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
         }
 
         public void OnAfterCreated(IWebBrowser chromiumWebBrowser, IBrowser browser)
