@@ -89,6 +89,12 @@ namespace YeyouPlusPlus
                 LogSeverity = LogSeverity.Verbose,
                 // 显式指定子进程路径（与 CefFlashBrowser 一致）。
                 BrowserSubprocessPath = Path.Combine(baseDir, "CefSharp.BrowserSubprocess.exe"),
+                // 伪装成较新 Chrome：内核虽为 Chromium 84，但现代人机验证服务（极验/腾讯防水墙等）
+                // 会按 UA 判定浏览器过旧并拒绝渲染验证码图案。CefSettingsBase.UserAgent 直接
+                // 覆盖默认 UA（等价于 Chromium 的 --user-agent），社区通用做法。不含 CefSharp/CEF 标识。
+                UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                // Accept-Language 设为中文优先，避免部分国内验证码服务因默认 en-US 拒绝出图。
+                AcceptLanguageList = "zh-CN,zh;q=0.9,en;q=0.8",
             };
 
             // 影子功能依赖：所有 profile 缓存目录的公共根目录。
