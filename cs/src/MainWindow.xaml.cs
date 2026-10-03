@@ -493,7 +493,6 @@ namespace YeyouPlusPlus
                 videoThemeUnlocked = true;
                 EnsureVideoSourceLoaded();
                 VideoBgLayer.Visibility = Visibility.Visible;
-                VideoOverlayLayer.Visibility = Visibility.Visible;
                 videoSoundOn = false;
                 if (BgVideo != null && BgVideo.Source != null)
                 {
@@ -511,7 +510,6 @@ namespace YeyouPlusPlus
                     BgVideo.Stop();
                 }
                 VideoBgLayer.Visibility = Visibility.Collapsed;
-                VideoOverlayLayer.Visibility = Visibility.Collapsed;
                 UpdateVideoThemeButtons();
                 SetStatus("已切换到经典主题");
             }
@@ -586,6 +584,16 @@ namespace YeyouPlusPlus
             if (videoThemeActive && VideoBgLayer != null &&
                 VideoBgLayer.Visibility == Visibility.Visible)
             {
+                // 无缝循环：距结束不足 80ms 时提前重置到开头，避免 MediaEnded 后 seek 黑屏
+                if (BgVideo != null && BgVideo.NaturalDuration.HasTimeSpan)
+                {
+                    var total = BgVideo.NaturalDuration.TimeSpan;
+                    if (total > TimeSpan.Zero && (total - BgVideo.Position) <= TimeSpan.FromMilliseconds(80))
+                    {
+                        BgVideo.Position = TimeSpan.Zero;
+                    }
+                }
+
                 VideoBgLayer.InvalidateVisual();
             }
         }

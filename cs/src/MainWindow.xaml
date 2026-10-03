@@ -27,9 +27,6 @@
                 </VisualBrush>
             </Rectangle.Fill>
         </Rectangle>
-        <!-- 半透明遮罩：保证叠加在视频上的文字 / 按钮可读。 -->
-        <Rectangle x:Name="VideoOverlayLayer" Grid.ColumnSpan="3"
-                   Fill="#99000000" Visibility="Collapsed" IsHitTestVisible="False"/>
 
         <!-- ============ 左侧边栏（可收拢） ============ -->
         <Border x:Name="Sidebar" Grid.Column="0"
