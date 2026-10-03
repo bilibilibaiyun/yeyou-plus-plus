@@ -21,7 +21,7 @@
                       LoadedBehavior="Manual" IsMuted="True" ScrubbingEnabled="False"
                       Stretch="UniformToFill">
             <MediaElement.Effect>
-                <BlurEffect Radius="0.01" KernelType="Gaussian" RenderingBias="Quality"/>
+                <BlurEffect Radius="0.01" KernelType="Gaussian" RenderingBias="Performance"/>
             </MediaElement.Effect>
         </MediaElement>
 
@@ -88,7 +88,8 @@
             </Grid.RowDefinitions>
 
             <!-- 标签栏（常驻：任何视图下都能看到，点击标签随时回到对应网页） -->
-            <Border Grid.Row="0" Background="{DynamicResource Theme.TabBarBg}"
+            <Border x:Name="TabBarBorder" Grid.Row="0"
+                    Background="{DynamicResource Theme.TabBarBg}"
                     Padding="8,5,8,5">
                 <DockPanel LastChildFill="False">
                     <ScrollViewer DockPanel.Dock="Left"
@@ -329,7 +330,8 @@
             </Grid>
 
             <!-- 状态栏 -->
-            <Border Grid.Row="2" Background="{DynamicResource Theme.CardBg}"
+            <Border x:Name="StatusBarBorder" Grid.Row="2"
+                    Background="{DynamicResource Theme.CardBg}"
                     BorderBrush="{DynamicResource Theme.Border}" BorderThickness="0,1,0,0"
                     Padding="12,4">
                 <TextBlock x:Name="StatusText" Text="就绪" FontSize="12"

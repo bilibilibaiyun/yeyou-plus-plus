@@ -20,6 +20,12 @@ namespace YeyouPlusPlus
 
         /// <summary>是否使用夜间模式（false = 日间）。</summary>
         public bool IsDarkMode { get; set; }
+
+        /// <summary>视频背景隐藏主题是否已解锁（主页连点 5 次彩蛋，解锁后持久保持）。</summary>
+        public bool VideoThemeUnlocked { get; set; }
+
+        /// <summary>视频背景隐藏主题是否激活（关闭软件重开后恢复视频背景）。</summary>
+        public bool VideoThemeActive { get; set; }
     }
 
     public static class AppSettingsStore

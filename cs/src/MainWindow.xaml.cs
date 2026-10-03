@@ -64,6 +64,10 @@ namespace YeyouPlusPlus
         {
             InitializeComponent();
 
+            // 恢复视频背景主题状态（解锁状态与激活状态均持久化，重启后保留）。
+            videoThemeUnlocked = AppSettingsStore.Current.VideoThemeUnlocked;
+            videoThemeActive = AppSettingsStore.Current.VideoThemeActive;
+
             // 初始化倍速下拉。
             SpeedCombo.ItemsSource = new[] { "0.5x", "1x", "1.5x", "2x", "3x", "5x" };
             SpeedCombo.SelectedIndex = 1; // 默认 1x
@@ -111,7 +115,11 @@ namespace YeyouPlusPlus
             activeTabIndex = 0;
             // [修复] RenderTabs 延迟到窗口 Loaded 后执行：构造期向常驻 TabStrip
             // 填充内容会干扰后续 CEF HwndHost 的 SetParent 呈现（浏览器空白）。
-            Loaded += (s, e) => RenderTabs();
+            Loaded += (s, e) =>
+            {
+                RenderTabs();
+                RestoreVideoThemeState();
+            };
 
             RenderQuickLinks();
             RefreshSettingsView();
@@ -489,7 +497,7 @@ namespace YeyouPlusPlus
 
             if (videoThemeActive)
             {
-                // 一旦进入隐藏主题即解锁，本次运行内保持解锁，切回经典后仍可再切回。
+                // 一旦进入隐藏主题即解锁，解锁状态持久保持，切回经典后仍可再切回。
                 videoThemeUnlocked = true;
                 EnsureVideoSourceLoaded();
                 BgVideo.Visibility = Visibility.Visible;
@@ -499,6 +507,7 @@ namespace YeyouPlusPlus
                     BgVideo.IsMuted = true;
                     BgVideo.Play();
                 }
+                ApplyGlassEffect();
                 UpdateVideoThemeButtons();
                 UpdateVideoSoundIcon();
                 SetStatus("已切换到隐藏主题");
@@ -510,9 +519,15 @@ namespace YeyouPlusPlus
                     BgVideo.Stop();
                 }
                 BgVideo.Visibility = Visibility.Collapsed;
+                RestoreSolidBackgrounds();
                 UpdateVideoThemeButtons();
                 SetStatus("已切换到经典主题");
             }
+
+            // 持久化解锁 / 激活状态：关闭软件重开后自动恢复。
+            AppSettingsStore.Current.VideoThemeUnlocked = videoThemeUnlocked;
+            AppSettingsStore.Current.VideoThemeActive = videoThemeActive;
+            AppSettingsStore.Save();
         }
 
         /// <summary>主题切换按钮解锁后常驻显示，声音开关仅隐藏主题激活时显示。</summary>
@@ -521,6 +536,40 @@ namespace YeyouPlusPlus
             ThemeSwitchButton.Visibility = videoThemeUnlocked ? Visibility.Visible : Visibility.Collapsed;
             ThemeSwitchButton.ToolTip = videoThemeActive ? "切换到经典主题" : "切换到隐藏主题";
             VideoSoundButton.Visibility = videoThemeActive ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>窗口 Loaded 时恢复持久化的视频背景主题状态（上次退出时隐藏主题激活则自动恢复视频层与玻璃材质）。</summary>
+        private void RestoreVideoThemeState()
+        {
+            if (videoThemeActive)
+            {
+                EnsureVideoSourceLoaded();
+                BgVideo.Visibility = Visibility.Visible;
+                if (BgVideo != null && BgVideo.Source != null)
+                {
+                    BgVideo.IsMuted = true;
+                    BgVideo.Play();
+                }
+                ApplyGlassEffect();
+            }
+            UpdateVideoThemeButtons();
+        }
+
+        /// <summary>隐藏主题激活时，把侧边栏 / 标签栏 / 状态栏改为半透明白色液态玻璃，让视频透出铺满全界面。</summary>
+        private void ApplyGlassEffect()
+        {
+            var glass = new SolidColorBrush(Color.FromArgb(0x80, 0xFF, 0xFF, 0xFF));
+            Sidebar.Background = glass;
+            TabBarBorder.Background = glass;
+            StatusBarBorder.Background = glass;
+        }
+
+        /// <summary>切回经典主题时，恢复侧边栏 / 标签栏 / 状态栏的动态资源引用（保持日夜主题联动）。</summary>
+        private void RestoreSolidBackgrounds()
+        {
+            Sidebar.SetResourceReference(Border.BackgroundProperty, "Theme.SidebarBg");
+            TabBarBorder.SetResourceReference(Border.BackgroundProperty, "Theme.TabBarBg");
+            StatusBarBorder.SetResourceReference(Border.BackgroundProperty, "Theme.CardBg");
         }
 
         /// <summary>主题切换按钮：在隐藏主题 / 经典主题间自由切换。</summary>
@@ -578,17 +627,17 @@ namespace YeyouPlusPlus
             VideoSoundButton.Content = videoSoundOn ? "\uE767" : "\uE74F";
         }
 
-        /// <summary>视频背景无缝循环：仅主题激活时每帧检查，距结束不足 80ms 提前重置到开头。</summary>
+        /// <summary>视频背景无缝循环：仅主题激活时每帧检查，距结束不足 50ms 提前重置到开头。</summary>
         private void VideoTheme_OnRendering(object sender, EventArgs e)
         {
             if (videoThemeActive && BgVideo != null &&
                 BgVideo.Visibility == Visibility.Visible)
             {
-                // 无缝循环：距结束不足 80ms 时提前重置到开头，避免 MediaEnded 后 seek 黑屏
+                // 无缝循环：距结束不足 50ms 时提前重置到开头，避免 MediaEnded 后 seek 黑屏
                 if (BgVideo.NaturalDuration.HasTimeSpan)
                 {
                     var total = BgVideo.NaturalDuration.TimeSpan;
-                    if (total > TimeSpan.Zero && (total - BgVideo.Position) <= TimeSpan.FromMilliseconds(80))
+                    if (total > TimeSpan.Zero && (total - BgVideo.Position) <= TimeSpan.FromMilliseconds(50))
                     {
                         BgVideo.Position = TimeSpan.Zero;
                     }
