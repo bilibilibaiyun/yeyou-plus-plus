@@ -15,18 +15,15 @@
         </Grid.ColumnDefinitions>
 
         <!-- ============ 视频背景主题（隐藏彩蛋：主页连点 5 次切换） ============ -->
-        <!-- 用 VisualBrush 包装 MediaElement，让视频遵守 Z 序、位于所有界面元素之下（避免 Airspace 盖住界面）。 -->
-        <Rectangle x:Name="VideoBgLayer" Grid.ColumnSpan="3"
-                   Visibility="Collapsed" IsHitTestVisible="False">
-            <Rectangle.Fill>
-                <VisualBrush Stretch="UniformToFill" AlignmentX="Center" AlignmentY="Center">
-                    <VisualBrush.Visual>
-                        <MediaElement x:Name="BgVideo" LoadedBehavior="Manual"
-                                      IsMuted="True" ScrubbingEnabled="False"/>
-                    </VisualBrush.Visual>
-                </VisualBrush>
-            </Rectangle.Fill>
-        </Rectangle>
+        <!-- MediaElement 直接渲染，配合 Effect 强制软件渲染以遵守 Z 序、位于所有界面元素之下（解决 Airspace 盖住界面）。 -->
+        <MediaElement x:Name="BgVideo" Grid.ColumnSpan="3"
+                      Visibility="Collapsed" IsHitTestVisible="False"
+                      LoadedBehavior="Manual" IsMuted="True" ScrubbingEnabled="False"
+                      Stretch="UniformToFill">
+            <MediaElement.Effect>
+                <BlurEffect Radius="0.01" KernelType="Gaussian" RenderingBias="Quality"/>
+            </MediaElement.Effect>
+        </MediaElement>
 
         <!-- ============ 左侧边栏（可收拢） ============ -->
         <Border x:Name="Sidebar" Grid.Column="0"

@@ -82,8 +82,8 @@ namespace YeyouPlusPlus
             // 帧率统计 + 标题刷新（每秒）。
             CompositionTarget.Rendering += (s, e) => frameCount++;
 
-            // 视频背景兜底：VisualBrush 包裹 MediaElement 时个别环境帧不自动刷新，
-            // 每帧触发一次重绘保证视频流畅循环（仅在视频主题激活时执行）。
+            // 视频背景兜底：在视频主题激活时每帧检查播放位置，接近末尾提前重置，
+            // 避免 MediaEnded 后 seek 出现黑屏（MediaElement 直接渲染、循环更可靠）。
             CompositionTarget.Rendering += VideoTheme_OnRendering;
             titleTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             titleTimer.Tick += (s, e) =>
@@ -492,7 +492,7 @@ namespace YeyouPlusPlus
                 // 一旦进入隐藏主题即解锁，本次运行内保持解锁，切回经典后仍可再切回。
                 videoThemeUnlocked = true;
                 EnsureVideoSourceLoaded();
-                VideoBgLayer.Visibility = Visibility.Visible;
+                BgVideo.Visibility = Visibility.Visible;
                 videoSoundOn = false;
                 if (BgVideo != null && BgVideo.Source != null)
                 {
@@ -509,7 +509,7 @@ namespace YeyouPlusPlus
                 {
                     BgVideo.Stop();
                 }
-                VideoBgLayer.Visibility = Visibility.Collapsed;
+                BgVideo.Visibility = Visibility.Collapsed;
                 UpdateVideoThemeButtons();
                 SetStatus("已切换到经典主题");
             }
@@ -578,14 +578,14 @@ namespace YeyouPlusPlus
             VideoSoundButton.Content = videoSoundOn ? "\uE767" : "\uE74F";
         }
 
-        /// <summary>VisualBrush 兜底刷新：仅主题激活时每帧触发重绘，避免视频帧不刷新。</summary>
+        /// <summary>视频背景无缝循环：仅主题激活时每帧检查，距结束不足 80ms 提前重置到开头。</summary>
         private void VideoTheme_OnRendering(object sender, EventArgs e)
         {
-            if (videoThemeActive && VideoBgLayer != null &&
-                VideoBgLayer.Visibility == Visibility.Visible)
+            if (videoThemeActive && BgVideo != null &&
+                BgVideo.Visibility == Visibility.Visible)
             {
                 // 无缝循环：距结束不足 80ms 时提前重置到开头，避免 MediaEnded 后 seek 黑屏
-                if (BgVideo != null && BgVideo.NaturalDuration.HasTimeSpan)
+                if (BgVideo.NaturalDuration.HasTimeSpan)
                 {
                     var total = BgVideo.NaturalDuration.TimeSpan;
                     if (total > TimeSpan.Zero && (total - BgVideo.Position) <= TimeSpan.FromMilliseconds(80))
@@ -593,8 +593,6 @@ namespace YeyouPlusPlus
                         BgVideo.Position = TimeSpan.Zero;
                     }
                 }
-
-                VideoBgLayer.InvalidateVisual();
             }
         }
 
