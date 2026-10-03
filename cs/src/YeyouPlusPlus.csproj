@@ -18,14 +18,15 @@
     <StartupObject>YeyouPlusPlus.Program</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Version>2.2.2</Version>
-    <AssemblyVersion>2.2.2.0</AssemblyVersion>
-    <FileVersion>2.2.2.0</FileVersion>
+    <Version>2.2.3</Version>
+    <AssemblyVersion>2.2.3.0</AssemblyVersion>
+    <FileVersion>2.2.3.0</FileVersion>
     <ApplicationIcon>..\..\assets\icon\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="..\..\assets\icon\app-64.png" Link="Assets\app-64.png" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\assets\video\intro.mp4" Link="Assets\video\intro.mp4" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>
 
   <ItemGroup>

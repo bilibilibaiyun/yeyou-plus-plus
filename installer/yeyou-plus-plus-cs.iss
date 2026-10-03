@@ -4,7 +4,7 @@
 
 #define MyAppName "页游++"
 #define MyAppNameEn "YeyouPlusPlus"
-#define MyAppVersion "2.2.2"
+#define MyAppVersion "2.2.3"
 #define MyAppPublisher "Yeyou Plus Plus contributors"
 #define MyAppExeName "YeyouPlusPlus.exe"
 
@@ -17,7 +17,7 @@ DefaultDirName={sd}\YeyouPlusPlus
 DefaultGroupName=页游++
 UninstallDisplayIcon={app}\{#MyAppExeName}
 OutputDir=..\artifacts
-OutputBaseFilename=YeyouPlusPlus_2.2.2_x64_Setup
+OutputBaseFilename=YeyouPlusPlus_2.2.3_x64_Setup
 SetupIconFile=..\assets\icon\app.ico
 Compression=lzma2/max
 SolidCompression=yes
@@ -37,7 +37,8 @@ Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.i
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; 主程序与 CEF 运行库（整个 release 输出目录，排除调试符号/日志/文档）
+; 主程序与 CEF 运行库（整个 release 输出目录，排除调试符号/日志/文档）。
+; 视频背景主题资源 Assets\video\intro.mp4 位于输出目录内，由 recursesubdirs 一并打包。
 Source: "..\cs\src\bin\x64\Release\net462\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.log,*.xml"
 
 [Icons]

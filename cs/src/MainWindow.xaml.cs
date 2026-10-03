@@ -46,6 +46,14 @@ namespace YeyouPlusPlus
         private double pendingZoomPercent = 100;
         private bool shadowSidebarExpanded;
 
+        // ===== 视频背景主题（隐藏彩蛋：主页连点 5 次切换） =====
+        private int homeClickCount;
+        private DateTime lastHomeClick = DateTime.MinValue;
+        private bool videoThemeActive;
+        private bool videoThemeUnlocked; // 隐藏主题是否已解锁（解锁后本次运行内保持 true）。
+        private bool videoSoundOn; // 视频背景声音开关，默认静音。
+        private bool videoSourceLoaded;
+
         /// <summary>当前激活标签的浏览器宿主。</summary>
         private BrowserHost CurrentHost
         {
@@ -73,6 +81,10 @@ namespace YeyouPlusPlus
 
             // 帧率统计 + 标题刷新（每秒）。
             CompositionTarget.Rendering += (s, e) => frameCount++;
+
+            // 视频背景兜底：VisualBrush 包裹 MediaElement 时个别环境帧不自动刷新，
+            // 每帧触发一次重绘保证视频流畅循环（仅在视频主题激活时执行）。
+            CompositionTarget.Rendering += VideoTheme_OnRendering;
             titleTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             titleTimer.Tick += (s, e) =>
             {
@@ -404,7 +416,12 @@ namespace YeyouPlusPlus
             }
         }
 
-        private void NavHome_Click(object sender, RoutedEventArgs e) => ShowView("home");
+        private void NavHome_Click(object sender, RoutedEventArgs e)
+        {
+            ShowView("home");
+            DetectVideoThemeTrigger();
+        }
+
         private void NavSettings_Click(object sender, RoutedEventArgs e) => ShowView("settings");
 
         private void ToggleSidebarButton_Click(object sender, RoutedEventArgs e) => ToggleSidebar();
@@ -442,6 +459,135 @@ namespace YeyouPlusPlus
             NavSettingsButton.HorizontalContentAlignment = align;
             ToggleSidebarButton.Padding = pad;
             ToggleSidebarButton.HorizontalContentAlignment = align;
+        }
+
+        // ================= 视频背景主题（隐藏彩蛋：主页连点 5 次切换） =================
+
+        /// <summary>主页导航按钮连点检测：单次点击间隔超过约 1.5 秒则重置计数，连点 5 次触发。</summary>
+        private void DetectVideoThemeTrigger()
+        {
+            var now = DateTime.UtcNow;
+            if (lastHomeClick != DateTime.MinValue &&
+                (now - lastHomeClick).TotalMilliseconds > 1500)
+            {
+                homeClickCount = 0;
+            }
+            lastHomeClick = now;
+            homeClickCount++;
+            if (homeClickCount >= 5)
+            {
+                homeClickCount = 0;
+                lastHomeClick = DateTime.MinValue;
+                ToggleVideoTheme();
+            }
+        }
+
+        /// <summary>切换视频背景主题（再连点 5 次或点主题切换按钮可切回；与日间 / 夜间主题互不影响）。</summary>
+        private void ToggleVideoTheme()
+        {
+            videoThemeActive = !videoThemeActive;
+
+            if (videoThemeActive)
+            {
+                // 一旦进入隐藏主题即解锁，本次运行内保持解锁，切回经典后仍可再切回。
+                videoThemeUnlocked = true;
+                EnsureVideoSourceLoaded();
+                VideoBgLayer.Visibility = Visibility.Visible;
+                VideoOverlayLayer.Visibility = Visibility.Visible;
+                videoSoundOn = false;
+                if (BgVideo != null && BgVideo.Source != null)
+                {
+                    BgVideo.IsMuted = true;
+                    BgVideo.Play();
+                }
+                UpdateVideoThemeButtons();
+                UpdateVideoSoundIcon();
+                SetStatus("已切换到隐藏主题");
+            }
+            else
+            {
+                if (BgVideo != null && BgVideo.Source != null)
+                {
+                    BgVideo.Stop();
+                }
+                VideoBgLayer.Visibility = Visibility.Collapsed;
+                VideoOverlayLayer.Visibility = Visibility.Collapsed;
+                UpdateVideoThemeButtons();
+                SetStatus("已切换到经典主题");
+            }
+        }
+
+        /// <summary>主题切换按钮解锁后常驻显示，声音开关仅隐藏主题激活时显示。</summary>
+        private void UpdateVideoThemeButtons()
+        {
+            ThemeSwitchButton.Visibility = videoThemeUnlocked ? Visibility.Visible : Visibility.Collapsed;
+            ThemeSwitchButton.ToolTip = videoThemeActive ? "切换到经典主题" : "切换到隐藏主题";
+            VideoSoundButton.Visibility = videoThemeActive ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>主题切换按钮：在隐藏主题 / 经典主题间自由切换。</summary>
+        private void ThemeSwitchButton_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleVideoTheme();
+        }
+
+        /// <summary>懒加载视频源：程序目录 Assets\video\intro.mp4，文件缺失 / 解码失败时静默容错。</summary>
+        private void EnsureVideoSourceLoaded()
+        {
+            if (videoSourceLoaded || BgVideo == null)
+            {
+                return;
+            }
+            videoSourceLoaded = true;
+
+            string videoPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "video", "intro.mp4");
+            if (!File.Exists(videoPath))
+            {
+                return;
+            }
+
+            try
+            {
+                BgVideo.Source = new Uri(videoPath, UriKind.Absolute);
+                BgVideo.MediaEnded += (s, e) =>
+                {
+                    // 循环播放：结束后回到起点继续播放。
+                    BgVideo.Position = TimeSpan.Zero;
+                    BgVideo.Play();
+                };
+            }
+            catch
+            {
+                // 视频解码失败等异常：保持普通背景，不崩溃。
+            }
+        }
+
+        /// <summary>背景视频声音开关（有声 / 静音）。</summary>
+        private void VideoSoundButton_Click(object sender, RoutedEventArgs e)
+        {
+            videoSoundOn = !videoSoundOn;
+            if (BgVideo != null)
+            {
+                BgVideo.IsMuted = !videoSoundOn;
+            }
+            UpdateVideoSoundIcon();
+            SetStatus(videoSoundOn ? "背景视频声音已开启" : "背景视频声音已关闭");
+        }
+
+        private void UpdateVideoSoundIcon()
+        {
+            // E767 = 有声，E74F = 静音。
+            VideoSoundButton.Content = videoSoundOn ? "\uE767" : "\uE74F";
+        }
+
+        /// <summary>VisualBrush 兜底刷新：仅主题激活时每帧触发重绘，避免视频帧不刷新。</summary>
+        private void VideoTheme_OnRendering(object sender, EventArgs e)
+        {
+            if (videoThemeActive && VideoBgLayer != null &&
+                VideoBgLayer.Visibility == Visibility.Visible)
+            {
+                VideoBgLayer.InvalidateVisual();
+            }
         }
 
         // ================= 浏览器操作 =================
