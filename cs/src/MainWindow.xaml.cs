@@ -562,6 +562,7 @@ namespace YeyouPlusPlus
             Sidebar.Background = glass;
             TabBarBorder.Background = glass;
             StatusBarBorder.Background = glass;
+            ShadowSidebar.Background = glass;
         }
 
         /// <summary>切回经典主题时，恢复侧边栏 / 标签栏 / 状态栏的动态资源引用（保持日夜主题联动）。</summary>
@@ -570,6 +571,7 @@ namespace YeyouPlusPlus
             Sidebar.SetResourceReference(Border.BackgroundProperty, "Theme.SidebarBg");
             TabBarBorder.SetResourceReference(Border.BackgroundProperty, "Theme.TabBarBg");
             StatusBarBorder.SetResourceReference(Border.BackgroundProperty, "Theme.CardBg");
+            ShadowSidebar.SetResourceReference(Border.BackgroundProperty, "Theme.SidebarBg");
         }
 
         /// <summary>主题切换按钮：在隐藏主题 / 经典主题间自由切换。</summary>
