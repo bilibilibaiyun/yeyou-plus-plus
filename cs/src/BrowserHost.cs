@@ -52,6 +52,13 @@ namespace YeyouPlusPlus
             browser.LoadingStateChanged += OnBrowserLoadingStateChanged;
             browser.IsBrowserInitializedChanged += OnBrowserInitializedChanged;
 
+            // 注入与伪装 UA（Chrome/120）一致的 Sec-CH-UA 客户端提示头，
+            // 解决人机验证码因 UA 与客户端提示头不一致而被拒绝渲染的问题。
+            // 注意：CefSharp 优先走 RequestHandler；其 GetResourceRequestHandler 返回 null 时
+            // 才会回退到 ResourceRequestHandlerFactory，因此 CaptchaRequestHandler 内部对
+            // flash.cn 请求返回 null，确保 FlashVerifyBlocker 仍能正常取消验证请求。
+            browser.RequestHandler = new CaptchaRequestHandler();
+
             // 拦截重橙 Flash 的联网验证请求（api.flash.cn），避免 ppapi 进程崩溃。
             browser.ResourceRequestHandlerFactory = new FlashVerifyBlocker();
 
