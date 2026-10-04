@@ -52,12 +52,12 @@ namespace YeyouPlusPlus
             browser.LoadingStateChanged += OnBrowserLoadingStateChanged;
             browser.IsBrowserInitializedChanged += OnBrowserInitializedChanged;
 
-            // 注入与伪装 UA（Chrome/120）一致的 Sec-CH-UA 客户端提示头，
-            // 解决人机验证码因 UA 与客户端提示头不一致而被拒绝渲染的问题。
+            // 风险接口（e.4399.cn/risk）响应记录器：仅对命中该前缀的请求接管并记录
+            // 状态码 + 响应体到 %TEMP%\risk-debug.log，其它请求返回 null 不干扰。
             // 注意：CefSharp 优先走 RequestHandler；其 GetResourceRequestHandler 返回 null 时
-            // 才会回退到 ResourceRequestHandlerFactory，因此 CaptchaRequestHandler 内部对
-            // flash.cn 请求返回 null，确保 FlashVerifyBlocker 仍能正常取消验证请求。
-            browser.RequestHandler = new CaptchaRequestHandler();
+            // 才会回退到 ResourceRequestHandlerFactory，因此 flash.cn 请求直接交给
+            // FlashVerifyBlocker 取消，行为不变。
+            browser.RequestHandler = new RiskLogRequestHandler();
 
             // 拦截重橙 Flash 的联网验证请求（api.flash.cn），避免 ppapi 进程崩溃。
             browser.ResourceRequestHandlerFactory = new FlashVerifyBlocker();
@@ -218,11 +218,11 @@ namespace YeyouPlusPlus
             // 以及 Unknown / CurrentTab / SaveToDisk 等其它 disposition，一律放行，
             // 交给 CEF 创建真正的原生弹窗窗口，否则会因 window.opener 引用断裂导致闪退。
             //
-            // 修复：此前直接 return false 走 CEF 默认 client。为保证弹窗内请求一定注入
-            // Sec-CH-UA，这里返回一个带 CaptchaRequestHandler 的宿主 ChromiumWebBrowser
-            // 作为 newBrowser —— CefSharp 会用该控件的 ClientAdapter 作为弹窗的 CefClient，
-            // 从而让弹窗内请求复用 CaptchaRequestHandler 注入客户端提示头；窗口本身仍是
-            // CEF 原生弹窗（window.opener 关系保持不变）。创建失败时回退 null + 默认行为。
+            // 修复：此前直接 return false 走 CEF 默认 client。为保证弹窗内请求的处理与主浏览器
+            // 一致，这里返回一个带 RiskLogRequestHandler 的宿主 ChromiumWebBrowser 作为 newBrowser
+            // —— CefSharp 会用该控件的 ClientAdapter 作为弹窗的 CefClient，从而让弹窗内请求
+            // 复用 RiskLogRequestHandler 记录风险接口响应；窗口本身仍是 CEF 原生弹窗
+            // （window.opener 关系保持不变）。创建失败时回退 null + 默认行为。
             newBrowser = CreatePopupBrowser(targetUrl);
 
             return false;
@@ -233,7 +233,7 @@ namespace YeyouPlusPlus
         ///
         /// 说明：这个控件并不创建自己的浏览器窗口，它只是作为「CefClient / 处理器载体」——
         /// 通过 OnBeforePopup 的 newBrowser 参数交给 CEF 后，CEF 会用它的 ClientAdapter
-        /// （即挂在它上面的 CaptchaRequestHandler 等处理器）作为弹窗的 client，而弹窗窗口
+        /// （即挂在它上面的 RiskLogRequestHandler 等处理器）作为弹窗的 client，而弹窗窗口
         /// 本身仍由 CEF 原生创建，保持 window.opener 关系。
         /// </summary>
         private ChromiumWebBrowser CreatePopupBrowser(string targetUrl)
@@ -256,10 +256,10 @@ namespace YeyouPlusPlus
                         popup.SetAsPopup();
 
                         // 与主浏览器保持一致的处理器：
-                        // 1) 请求处理器：让弹窗内请求也注入 Sec-CH-UA；
-                        // 2) 资源请求工厂：flash.cn 验证请求同样交还给 FlashVerifyBlocker 取消；
+                        // 1) 请求处理器：让弹窗内请求也记录 risk 接口响应；
+                        // 2) 资源请求工厂：flash.cn 验证请求同样交给 FlashVerifyBlocker 取消；
                         // 3) 下载处理器：弹窗内触发下载时仍静默保存到下载目录。
-                        popup.RequestHandler = new CaptchaRequestHandler();
+                        popup.RequestHandler = new RiskLogRequestHandler();
                         popup.ResourceRequestHandlerFactory = new FlashVerifyBlocker();
                         popup.DownloadHandler = new BrowserDownloadHandler();
 
