@@ -216,8 +216,92 @@ namespace YeyouPlusPlus
 
             // QQ/微信扫码登录等依赖 window.open 的 OAuth 授权窗口（NewPopup/NewWindow），
             // 以及 Unknown / CurrentTab / SaveToDisk 等其它 disposition，一律放行，
-            // 交给 CEF 默认行为创建真正的弹窗窗口，否则会因 window.opener 引用断裂导致闪退。
+            // 交给 CEF 创建真正的原生弹窗窗口，否则会因 window.opener 引用断裂导致闪退。
+            //
+            // 修复：此前直接 return false 走 CEF 默认 client。为保证弹窗内请求一定注入
+            // Sec-CH-UA，这里返回一个带 CaptchaRequestHandler 的宿主 ChromiumWebBrowser
+            // 作为 newBrowser —— CefSharp 会用该控件的 ClientAdapter 作为弹窗的 CefClient，
+            // 从而让弹窗内请求复用 CaptchaRequestHandler 注入客户端提示头；窗口本身仍是
+            // CEF 原生弹窗（window.opener 关系保持不变）。创建失败时回退 null + 默认行为。
+            newBrowser = CreatePopupBrowser(targetUrl);
+
             return false;
+        }
+
+        /// <summary>
+        /// 创建用于承载原生弹窗的 ChromiumWebBrowser 宿主。
+        ///
+        /// 说明：这个控件并不创建自己的浏览器窗口，它只是作为「CefClient / 处理器载体」——
+        /// 通过 OnBeforePopup 的 newBrowser 参数交给 CEF 后，CEF 会用它的 ClientAdapter
+        /// （即挂在它上面的 CaptchaRequestHandler 等处理器）作为弹窗的 client，而弹窗窗口
+        /// 本身仍由 CEF 原生创建，保持 window.opener 关系。
+        /// </summary>
+        private ChromiumWebBrowser CreatePopupBrowser(string targetUrl)
+        {
+            ChromiumWebBrowser popup = null;
+
+            // OnBeforePopup 运行在 CEF UI 线程，而 WinForms 控件必须在其创建线程
+            //（本应用的 UI 线程）上创建，这里同步切回主浏览器所在的 UI 线程。
+            try
+            {
+                if (!browser.IsDisposed && browser.IsHandleCreated)
+                {
+                    browser.Invoke(new Action(() =>
+                    {
+                        popup = new ChromiumWebBrowser(
+                            string.IsNullOrEmpty(targetUrl) ? "about:blank" : targetUrl);
+
+                        // 关键：必须在 CreateControl() 之前调用 SetAsPopup()（置 HasParent=true），
+                        // 否则 CreateControl 触发的 CreateBrowser() 会多创建一个内嵌浏览器。
+                        popup.SetAsPopup();
+
+                        // 与主浏览器保持一致的处理器：
+                        // 1) 请求处理器：让弹窗内请求也注入 Sec-CH-UA；
+                        // 2) 资源请求工厂：flash.cn 验证请求同样交还给 FlashVerifyBlocker 取消；
+                        // 3) 下载处理器：弹窗内触发下载时仍静默保存到下载目录。
+                        popup.RequestHandler = new CaptchaRequestHandler();
+                        popup.ResourceRequestHandlerFactory = new FlashVerifyBlocker();
+                        popup.DownloadHandler = new BrowserDownloadHandler();
+
+                        // 弹窗内再次 window.open 时复用本处理器（转新标签 / 再建带 handler 的弹窗）。
+                        popup.LifeSpanHandler = this;
+
+                        popup.CreateControl();
+                    }));
+                }
+            }
+            catch
+            {
+                // 创建失败（如主控件已释放）时返回 null，回退到 CEF 默认弹窗行为。
+                popup = null;
+            }
+
+            return popup;
+        }
+
+        /// <summary>在 UI 线程释放弹窗宿主控件，避免反复开关弹窗导致句柄/控件泄漏。</summary>
+        private void DisposePopupOnUiThread(ChromiumWebBrowser popup)
+        {
+            try
+            {
+                if (browser.IsDisposed || !browser.IsHandleCreated)
+                {
+                    return;
+                }
+
+                // OnBeforeClose 在 CEF UI 线程回调，须切回创建该控件的 UI 线程再 Dispose。
+                browser.Invoke(new Action(() =>
+                {
+                    if (!popup.IsDisposed && popup.IsHandleCreated)
+                    {
+                        popup.Dispose();
+                    }
+                }));
+            }
+            catch
+            {
+                // 忽略释放失败，避免影响正常的关闭流程。
+            }
         }
 
         /// <summary>判断 URL 是否为普通的 http/https 链接。</summary>
@@ -239,6 +323,16 @@ namespace YeyouPlusPlus
 
         public void OnBeforeClose(IWebBrowser chromiumWebBrowser, IBrowser browser)
         {
+            // 主浏览器控件由 HwndHost 的 DestroyWindowCore/Dispose 负责释放；
+            // 这里只释放通过 OnBeforePopup 创建的弹窗宿主控件，避免泄漏。
+            if (!ReferenceEquals(chromiumWebBrowser, this.browser))
+            {
+                var popup = chromiumWebBrowser as ChromiumWebBrowser;
+                if (popup != null)
+                {
+                    DisposePopupOnUiThread(popup);
+                }
+            }
         }
 
     [DllImport("user32.dll", SetLastError = true)]
