@@ -35,13 +35,12 @@ namespace YeyouPlusPlus
 
         public BrowserHost(string initialUrl = "about:blank", IRequestContext requestContext = null)
         {
-#pragma warning disable CS0618
             // 传 null 用全局 RequestContext（普通浏览），
             // 传独立 context 则实现影子的 cookie/缓存隔离。
+#pragma warning disable CS0618
             browser = requestContext == null
                 ? new ChromiumWebBrowser(initialUrl)
                 : new ChromiumWebBrowser(initialUrl, requestContext);
-            browser.CreateControl();
 #pragma warning restore CS0618
 
             // 拦截 target=_blank / window.open：取消 CEF 默认弹窗，改走 PopupRequested 在新标签打开。
@@ -52,8 +51,8 @@ namespace YeyouPlusPlus
             browser.LoadingStateChanged += OnBrowserLoadingStateChanged;
             browser.IsBrowserInitializedChanged += OnBrowserInitializedChanged;
 
-            // 风险接口（e.4399.cn/risk）响应记录器：仅对命中该前缀的请求接管并记录
-            // 状态码 + 响应体到 %TEMP%\risk-debug.log，其它请求返回 null 不干扰。
+            // 风险接口响应记录器：对 4399.cn 相关请求记录状态码 + 请求体 + 响应体
+            // 到 %TEMP%\risk-debug.log，其它请求返回 null 不干扰。
             // 注意：CefSharp 优先走 RequestHandler；其 GetResourceRequestHandler 返回 null 时
             // 才会回退到 ResourceRequestHandlerFactory，因此 flash.cn 请求直接交给
             // FlashVerifyBlocker 取消，行为不变。
@@ -64,6 +63,10 @@ namespace YeyouPlusPlus
 
             // 下载文件保存到设置的下载目录。
             browser.DownloadHandler = new BrowserDownloadHandler();
+
+            // 关键：CreateControl() 会触发底层浏览器创建，必须在所有 handler 都挂载完成后再调用，
+            // 否则此时 handler 仍是默认值，之后再赋值不会生效（会导致诊断日志/请求拦截失效）。
+            browser.CreateControl();
         }
 
         private void OnBrowserInitializedChanged(object sender, EventArgs e)

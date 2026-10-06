@@ -7,10 +7,10 @@ using System.Text;
 namespace YeyouPlusPlus
 {
     /// <summary>
-    /// 风险接口（e.4399.cn/risk）响应日志记录器（诊断兜底）。
+    /// 4399.cn 相关请求的响应日志记录器（验证码诊断兜底）。
     ///
-    /// 仅在请求 URL 命中 e.4399.cn/risk 时接管请求，记录 HTTP 状态码与响应体到
-    /// %TEMP%\risk-debug.log；其它请求一律返回 null 交给默认网络加载器，零额外开销。
+    /// 对 URL 命中 4399.cn（忽略大小写）的请求接管，记录 HTTP 状态码、请求体（POST 数据）
+    /// 与响应体到 %TEMP%\risk-debug.log；其它请求一律返回 null 交给默认网络加载器，零额外开销。
     ///
     /// 注意：CefSharp 的 ClientAdapter 在 RequestHandler 返回 null 时会继续查询
     /// ResourceRequestHandlerFactory，因此 flash.cn 的验证请求仍会走 FlashVerifyBlocker
@@ -24,7 +24,7 @@ namespace YeyouPlusPlus
             ref bool disableDefaultHandling)
         {
             var url = request?.Url ?? string.Empty;
-            if (url.IndexOf("e.4399.cn/risk", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (url.IndexOf("4399.cn", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 return new RiskResourceRequestHandler(url);
             }
@@ -44,6 +44,58 @@ namespace YeyouPlusPlus
         public RiskResourceRequestHandler(string url)
         {
             this.url = url;
+        }
+
+        /// <summary>
+        /// 请求发出前记录「URL + 请求体（POST 数据）」。
+        /// 返回 Continue 表示放行、不做任何修改。即使后续响应体抓取失败，
+        /// 也能从请求体确认 riskRequestId 是否为 null 等关键证据。
+        /// </summary>
+        protected override CefReturnValue OnBeforeResourceLoad(
+            IWebBrowser chromiumWebBrowser, IBrowser browser, IFrame frame,
+            IRequest request, IRequestCallback callback)
+        {
+            var targetUrl = request?.Url ?? url;
+            var body = ReadPostData(request);
+            if (body.Length > 2000)
+            {
+                body = body.Substring(0, 2000);
+            }
+
+            RiskLog.Append("[REQ BODY] " + targetUrl + " => " + body + Environment.NewLine);
+
+            return CefReturnValue.Continue;
+        }
+
+        /// <summary>
+        /// 读取请求的 POST 数据。CefSharp 84 的 IRequest.PostData 返回 IPostData，
+        /// 其 Elements 是 IPostDataElement 列表，每个元素通过 Bytes 提供原始字节；
+        /// 这里把所有字节元素按 UTF-8 拼成一个字符串。
+        /// </summary>
+        private static string ReadPostData(IRequest request)
+        {
+            var postData = request?.PostData;
+            if (postData == null || postData.Elements == null)
+            {
+                return string.Empty;
+            }
+
+            var sb = new StringBuilder();
+            foreach (var element in postData.Elements)
+            {
+                if (element == null)
+                {
+                    continue;
+                }
+
+                var bytes = element.Bytes;
+                if (bytes != null && bytes.Length > 0)
+                {
+                    sb.Append(Encoding.UTF8.GetString(bytes));
+                }
+            }
+
+            return sb.ToString();
         }
 
         /// <summary>
