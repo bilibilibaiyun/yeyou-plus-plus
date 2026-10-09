@@ -12,6 +12,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using CefSharp;
+using YeyouPlusPlus.PhoneBox;
 
 namespace YeyouPlusPlus
 {
@@ -860,6 +861,29 @@ namespace YeyouPlusPlus
                 SetStatus("缓存已清理");
                 MessageBox.Show("缓存已清理", "页游++", MessageBoxButton.OK, MessageBoxImage.Information);
             });
+        }
+
+        // ================= 手机盒子：临时抓屏验证入口（后续移除） =================
+
+        /// <summary>
+        /// 临时验证：用 GDI BitBlt 抓一帧全屏保存为 PNG，
+        /// 用于确认能否抓到 CEF 里 Flash 游戏的实际画面。
+        /// </summary>
+        private void PhoneBoxCaptureTestButton_Click(object sender, RoutedEventArgs e)
+        {
+            const string capturePath = @"D:\Codex Work\YeyouPlusPlus\phonebox-capture.png";
+            PhoneBoxLog.Info("开始抓屏测试，目标：" + capturePath);
+            try
+            {
+                ScreenCapturer.CaptureToFile(capturePath);
+                PhoneBoxLog.Info("抓屏成功：" + capturePath);
+                SetStatus("抓屏测试成功：" + capturePath);
+            }
+            catch (Exception ex)
+            {
+                PhoneBoxLog.Error("抓屏失败：" + ex);
+                SetStatus("抓屏测试失败：" + ex.Message);
+            }
         }
 
         // ================= 快捷入口 =================

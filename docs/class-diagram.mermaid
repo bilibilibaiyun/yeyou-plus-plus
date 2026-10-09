@@ -1,0 +1,171 @@
+classDiagram
+    direction TB
+
+    %% ================= 电脑端 C# (YeyouPlusPlus.PhoneBox) =================
+    class PhoneBoxServer {
+        -TcpListener _controlListener
+        -UdpClient _mediaClient
+        -PhoneBoxSession _session
+        +Start(PhoneBoxConfig cfg) void
+        +Stop() void
+        +event Action~string~ StateChanged
+    }
+    class PhoneBoxSession {
+        +string SessionId
+        +PhoneBoxState State
+        +ControlChannel Control
+        +StreamingService Streaming
+        +RemoteInputSimulator Input
+        +Start() void
+        +OnKeyEvent(KeyEventDto e) void
+        +UpdateConfig(PhoneBoxConfig cfg) void
+    }
+    class StreamingService {
+        -ScreenCapturer _capturer
+        -VideoEncoder _encoder
+        -RtpPacketizer _packetizer
+        -IStreamTransport _transport
+        +Start() void
+        +Stop() void
+        -CaptureLoop() void
+        -EncodeLoop() void
+    }
+    class ScreenCapturer {
+        -IntPtr _hWnd
+        -IntPtr _dib
+        -Bitmap _latest
+        +IntPtr TargetHwnd
+        +CaptureFrame() void
+        +GetLatestFrame() Frame
+    }
+    class VideoEncoder {
+        -AVCodecContext* _ctx
+        -SwsContext* _sws
+        +Init(int w, int h, int fps, int kbps, string encoder) bool
+        +Encode(Frame f) Packet[]
+        +Close() void
+    }
+    class RtpPacketizer {
+        +Packetize(byte[] nalu, int mtu) RtpPacket[]
+    }
+    class IStreamTransport {
+        <<interface>>
+        +Connect(EndPoint remote) void
+        +Send(byte[] data, int len) void
+        +Close() void
+        +Stats GetStats()
+    }
+    class UdpRtpTransport {
+        -UdpClient _udp
+        +Connect(EndPoint remote) void
+        +Send(byte[] data, int len) void
+        +Close() void
+        +Stats GetStats()
+    }
+    class ControlChannel {
+        -TcpClient _client
+        -NetworkStream _stream
+        +Start() void
+        +Send(object msg) void
+        +event Action~KeyEventDto~ KeyReceived
+        +event Action~HelloDto~ HelloReceived
+    }
+    class RemoteInputSimulator {
+        +SendKeyDown(ushort scanCode) void
+        +SendKeyUp(ushort scanCode) void
+        +SendKeyTap(ushort scanCode) void
+    }
+    class PhoneBoxProtocol {
+        +static string Serialize(object msg)
+        +static object Deserialize(string json)
+    }
+    class PhoneBoxConfig {
+        +int ControlPort
+        +int MediaPort
+        +int Width
+        +int Height
+        +int Fps
+        +int BitrateKbps
+        +string Encoder
+    }
+    class KeyEventDto {
+        +ushort ScanCode
+        +bool IsDown
+        +long Timestamp
+    }
+
+    %% ================= 手机端 Android Kotlin (com.yeyou.phonebox) =================
+    class MainActivity {
+        +SurfaceView surface
+        +VirtualGamepadView gamepad
+        +StreamingClient client
+        +onConnect(host, port) void
+    }
+    class StreamingClient {
+        +ControlChannel control
+        +VideoDecoder decoder
+        +RtpDepacketizer depacketizer
+        +start(host, port) void
+        +stop() void
+    }
+    class ControlChannel {
+        +Socket socket
+        +connect(host, port) void
+        +sendKeyEvent(KeyEventDto e) void
+        +event onConfig(ConfigDto)
+        +event onState(StateDto)
+    }
+    class VideoDecoder {
+        +MediaCodec codec
+        +configure(Surface s, int w, int h) void
+        +feed(byte[] nalu) void
+        +start() void
+        +release() void
+    }
+    class RtpDepacketizer {
+        +push(byte[] rtp) Nalu[]
+    }
+    class VirtualGamepadView {
+        +KeyLayout layout
+        +event onKey(ushort scanCode, bool isDown)
+        +loadLayout(KeyLayout l) void
+    }
+    class KeyLayout {
+        +List~KeyButton~ buttons
+        +load() void
+        +save() void
+    }
+    class KeyButton {
+        +int id
+        +float x
+        +float y
+        +float w
+        +float h
+        +ushort scanCode
+    }
+
+    %% ================= 关系 =================
+    PhoneBoxServer --> PhoneBoxSession : "1..1 管理"
+    PhoneBoxSession --> ControlChannel : "持有"
+    PhoneBoxSession --> StreamingService : "持有"
+    PhoneBoxSession --> RemoteInputSimulator : "持有"
+    StreamingService --> ScreenCapturer : "取帧"
+    StreamingService --> VideoEncoder : "编码"
+    StreamingService --> RtpPacketizer : "分片"
+    StreamingService --> IStreamTransport : "发送"
+    UdpRtpTransport ..|> IStreamTransport : "实现(P0)"
+    ControlChannel ..> PhoneBoxProtocol : "编解码"
+    ControlChannel ..> KeyEventDto : "解析"
+    RemoteInputSimulator ..> KeyEventDto : "注入"
+
+    MainActivity --> StreamingClient : "持有"
+    MainActivity --> VirtualGamepadView : "持有"
+    StreamingClient --> ControlChannel : "控制/按键"
+    StreamingClient --> VideoDecoder : "解码"
+    StreamingClient --> RtpDepacketizer : "重组"
+    VirtualGamepadView --> KeyLayout : "布局"
+    KeyLayout --> KeyButton : "包含"
+    ControlChannel ..> KeyEventDto : "上报"
+
+    note for PhoneBoxSession "会话状态机: Idle→Handshake→Streaming→Closed"
+    note for IStreamTransport "P1 新增 WebRtcTransport 实现同一接口"

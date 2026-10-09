@@ -1,0 +1,52 @@
+sequenceDiagram
+    autonumber
+    participant UI as 电脑 PhoneBoxWindow(UI线程)
+    participant SVR as PhoneBoxServer
+    participant SESS as PhoneBoxSession
+    participant CH as ControlChannel(TCP:8760)
+    participant CAP as ScreenCapturer(捕获线程)
+    participant ENC as VideoEncoder(编码线程)
+    participant RTP as UdpRtpTransport(UDP:8761)
+    participant MOB as 手机 StreamingClient
+    participant DEC as VideoDecoder(MediaCodec)
+    participant PAD as VirtualGamepadView
+    participant SIM as RemoteInputSimulator
+    participant GAME as CEF/Flash 游戏窗口
+    participant KBD as 本机键盘(玩家1)
+
+    Note over UI,SVR: ① 开服务
+    UI->>SVR: Start(config)
+    SVR->>CH: 监听 TCP:8760，预留 UDP:8761
+
+    Note over MOB,SVR: ② 局域网连接握手（手机输入 IP:端口）
+    MOB->>CH: TCP 连接 + Hello{能力}
+    CH->>SESS: 建立会话(Idle→Handshake)
+    SESS->>CH: Config{分辨率/帧率/码率/UDP端口/token}
+    CH-->>MOB: Config
+    MOB->>CH: Ready{手机UDP监听端口}
+    CH->>SESS: 会话→Streaming
+
+    Note over CAP,RTP: ③ 推流循环（30fps，丢弃过期帧）
+    SESS->>CAP: 启动捕获线程
+    SESS->>ENC: 启动编码线程
+    loop 每帧
+        CAP->>CAP: BitBlt 抓游戏窗口 → 最新帧(覆盖旧帧)
+        ENC->>CAP: 取最新帧(无新帧则跳过)
+        ENC->>ENC: sws BGRA→NV12 + H.264硬编(zero-latency)
+        ENC->>RTP: NALU → FU-A 分片 → RTP
+        RTP-->>MOB: UDP 媒体流(局域网 <1ms)
+    end
+
+    Note over MOB,DEC: ④ 手机解码显示
+    MOB->>DEC: RTP→Annex-B NALU
+    DEC->>DEC: MediaCodec 硬解 → SurfaceView 显示
+
+    Note over PAD,SIM: ⑤ 按键回传 + 双人输入隔离
+    PAD->>MOB: 玩家2 触摸按下/抬起(虚拟键)
+    MOB->>CH: KeyEvent{scanCode,isDown}(TCP,立即发送)
+    CH->>SESS: 解析按键事件
+    SESS->>SIM: SendKeyDown/Up(scanCode)
+    Note over SIM: 【隔离点】玩家2 仅映射独立键集合，与玩家1 键位不相交
+    SIM->>GAME: SendInput(KEYEVENTF_SCANCODE) 注入玩家2键
+    KBD->>GAME: 玩家1 本机键盘(另一套键位)
+    Note over GAME: 两路键位不重叠 → 双人各自控制、互不串扰
