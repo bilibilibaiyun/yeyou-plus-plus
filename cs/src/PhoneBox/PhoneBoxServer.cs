@@ -62,6 +62,21 @@ namespace YeyouPlusPlus.PhoneBox
             get { return session; }
         }
 
+        /// <summary>UDP RTP 传输（供上层构建 StreamingService 时注入）。</summary>
+        public UdpRtpTransport UdpTransport
+        {
+            get { return udpTransport; }
+        }
+
+        /// <summary>
+        /// 口令校验器（透传给 ControlChannel），用于校验手机联机码中的鉴权口令。
+        /// </summary>
+        public Func<string, bool> TokenValidator
+        {
+            get { return controlChannel.TokenValidator; }
+            set { controlChannel.TokenValidator = value; }
+        }
+
         /// <summary>启动服务。</summary>
         public void Start()
         {

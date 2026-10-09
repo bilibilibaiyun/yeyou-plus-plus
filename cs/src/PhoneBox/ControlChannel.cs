@@ -52,6 +52,12 @@ namespace YeyouPlusPlus.PhoneBox
         /// <summary>收到手机按键消息。</summary>
         public event Action<KeyMessage> KeyReceived;
 
+        /// <summary>
+        /// 口令校验器（可选）：收到 Hello 后调用，返回 false 时拒绝该连接。
+        /// 由上层（PhoneBoxServer）注入，用于校验联机码中的鉴权口令。
+        /// </summary>
+        public Func<string, bool> TokenValidator { get; set; }
+
         /// <summary>是否正在监听。</summary>
         public bool IsRunning
         {
@@ -180,7 +186,10 @@ namespace YeyouPlusPlus.PhoneBox
                         {
                             continue;
                         }
-                        ProcessLine(line, stream);
+                        if (!ProcessLine(line, stream))
+                        {
+                            break; // 鉴权失败等需要断开连接的情况。
+                        }
                     }
                 }
             }
@@ -205,8 +214,8 @@ namespace YeyouPlusPlus.PhoneBox
             }
         }
 
-        /// <summary>解析并分发一行 JSON 消息。</summary>
-        private void ProcessLine(string line, NetworkStream stream)
+        /// <summary>解析并分发一行 JSON 消息。返回 false 表示需要断开连接。</summary>
+        private bool ProcessLine(string line, NetworkStream stream)
         {
             object message;
             try
@@ -216,56 +225,65 @@ namespace YeyouPlusPlus.PhoneBox
             catch (JsonException ex)
             {
                 PhoneBoxLog.Warn("控制通道 JSON 解析失败：" + ex.Message);
-                return;
+                return true;
             }
 
             var hello = message as HelloMessage;
             if (hello != null)
             {
+                if (TokenValidator != null && !TokenValidator(hello.Token))
+                {
+                    PhoneBoxLog.Warn("手机握手口令校验失败，连接被拒绝。");
+                    return false;
+                }
                 SendConfig(stream);
                 RaiseHelloReceived(hello);
-                return;
+                return true;
             }
 
             if (message is ReadyMessage)
             {
                 RaiseSessionReady();
-                return;
+                return true;
             }
 
             var key = message as KeyMessage;
             if (key != null)
             {
                 RaiseKeyReceived(key);
-                return;
+                return true;
             }
 
             PhoneBoxLog.Warn("收到未知控制消息：" + line);
+            return true;
         }
 
         /// <summary>
-        /// 把一行 JSON 解析为对应消息对象。
-        /// 协议消息未带显式 type 字段，因此按特征字段区分类型。
+        /// 把一行 JSON 解析为对应消息对象：先读取 Type 字段，再反序列化到对应 DTO。
         /// </summary>
         private static object ParseMessage(string json)
         {
             var obj = JObject.Parse(json);
-
-            if (obj.Property("ClientType") != null || obj.Property("Version") != null)
+            var typeToken = obj["Type"];
+            if (typeToken == null)
             {
-                return obj.ToObject<HelloMessage>();
-            }
-            if (obj.Property("Ready") != null)
-            {
-                return obj.ToObject<ReadyMessage>();
-            }
-            if (obj.Property("KeyCode") != null || obj.Property("IsDown") != null
-                || obj.Property("ScanCode") != null)
-            {
-                return obj.ToObject<KeyMessage>();
+                return null;
             }
 
-            return null;
+            int type = typeToken.Value<int>();
+            switch (type)
+            {
+                case (int)MessageType.Hello:
+                    return obj.ToObject<HelloMessage>();
+                case (int)MessageType.Config:
+                    return obj.ToObject<ConfigMessage>();
+                case (int)MessageType.Ready:
+                    return obj.ToObject<ReadyMessage>();
+                case (int)MessageType.Key:
+                    return obj.ToObject<KeyMessage>();
+                default:
+                    return null;
+            }
         }
 
         /// <summary>回应 ConfigMessage（分辨率 / 帧率 / 码率 / 按键布局）。</summary>

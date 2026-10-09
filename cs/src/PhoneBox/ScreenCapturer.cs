@@ -188,6 +188,25 @@ namespace YeyouPlusPlus.PhoneBox
         }
 
         /// <summary>
+        /// 抓取指定窗口一帧并返回独立的 24bpp RGB Bitmap。
+        /// 窗口句柄无效或取不到尺寸时，回退抓主显示器全屏。
+        /// </summary>
+        public static Bitmap Capture(IntPtr windowHandle)
+        {
+            if (windowHandle != IntPtr.Zero)
+            {
+                RECT rect;
+                if (GetWindowRect(windowHandle, out rect) && rect.Width > 0 && rect.Height > 0)
+                {
+                    return Capture(rect.Left, rect.Top, rect.Width, rect.Height);
+                }
+            }
+
+            var bounds = Screen.PrimaryScreen.Bounds;
+            return Capture(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        }
+
+        /// <summary>
         /// 抓取主显示器全屏一帧并保存为 PNG（手机盒子 spike 验证用）。
         /// </summary>
         public static void CaptureToFile(string path)

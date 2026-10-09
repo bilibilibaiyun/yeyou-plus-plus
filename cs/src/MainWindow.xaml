@@ -191,11 +191,10 @@
                                     Margin="0,0,5,0" Click="FavoriteButton_Click" ToolTip="收藏当前页"/>
                             <Button x:Name="FavoritesButton" Style="{StaticResource IconButton}" Content="&#xE700;"
                                     Margin="0,0,5,0" Click="FavoritesButton_Click" ToolTip="收藏夹"/>
-                            <!-- 临时验证入口：手机盒子屏幕捕获 spike，验证后移除 -->
-                            <Button x:Name="PhoneBoxCaptureTestButton" Height="32" Padding="10,0"
-                                    Margin="0,0,5,0" Content="抓屏测试" FontSize="12"
-                                    Click="PhoneBoxCaptureTestButton_Click"
-                                    ToolTip="临时：抓一帧全屏存 PNG（手机盒子验证，后续移除）"/>
+                            <Button x:Name="PhoneBoxButton" Height="32" Padding="10,0"
+                                    Margin="0,0,5,0" Content="远程联机" FontSize="12"
+                                    Click="PhoneBoxButton_Click"
+                                    ToolTip="手机盒子：同屏双人游戏"/>
                             <Button x:Name="ClearCacheButton" Style="{StaticResource IconButton}" Content="&#xE74D;"
                                     Click="ClearCacheButton_Click" ToolTip="清理缓存"/>
                         </StackPanel>

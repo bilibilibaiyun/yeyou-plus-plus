@@ -27,11 +27,15 @@
   <ItemGroup>
     <None Include="..\..\assets\icon\app-64.png" Link="Assets\app-64.png" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\assets\video\intro.mp4" Link="Assets\video\intro.mp4" CopyToOutputDirectory="PreserveNewest"/>
+    <!-- OpenH264 软编码 native 库（Cisco 官方预编译 win64，BSD 许可）。 -->
+    <None Include="native\openh264.dll" Link="openh264.dll" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>
 
   <ItemGroup>
     <!-- net462 默认不引用 System.Net.Http，需显式引用以使用 HttpClient。 -->
     <Reference Include="System.Net.Http" />
+    <!-- Base62 联机码编码使用 BigInteger。 -->
+    <Reference Include="System.Numerics" />
   </ItemGroup>
 
   <ItemGroup>

@@ -863,27 +863,20 @@ namespace YeyouPlusPlus
             });
         }
 
-        // ================= 手机盒子：临时抓屏验证入口（后续移除） =================
+        // ================= 手机盒子：远程联机入口 =================
 
         /// <summary>
-        /// 临时验证：用 GDI BitBlt 抓一帧全屏保存为 PNG，
-        /// 用于确认能否抓到 CEF 里 Flash 游戏的实际画面。
+        /// 打开远程联机窗口（手机盒子同屏双人游戏入口）。
+        /// 推流捕获目标设为当前游戏标签页的 HwndHost 窗口句柄。
         /// </summary>
-        private void PhoneBoxCaptureTestButton_Click(object sender, RoutedEventArgs e)
+        private void PhoneBoxButton_Click(object sender, RoutedEventArgs e)
         {
-            const string capturePath = @"D:\Codex Work\YeyouPlusPlus\phonebox-capture.png";
-            PhoneBoxLog.Info("开始抓屏测试，目标：" + capturePath);
-            try
+            IntPtr handle = CurrentHost != null ? CurrentHost.Handle : IntPtr.Zero;
+            var window = new PhoneBoxWindow(handle)
             {
-                ScreenCapturer.CaptureToFile(capturePath);
-                PhoneBoxLog.Info("抓屏成功：" + capturePath);
-                SetStatus("抓屏测试成功：" + capturePath);
-            }
-            catch (Exception ex)
-            {
-                PhoneBoxLog.Error("抓屏失败：" + ex);
-                SetStatus("抓屏测试失败：" + ex.Message);
-            }
+                Owner = this
+            };
+            window.Show();
         }
 
         // ================= 快捷入口 =================

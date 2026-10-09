@@ -25,11 +25,18 @@ namespace YeyouPlusPlus.PhoneBox
     /// </summary>
     public class HelloMessage
     {
+        [JsonProperty("Type")]
+        public MessageType Type { get; set; } = MessageType.Hello;
+
         [JsonProperty("ClientType")]
         public string ClientType { get; set; }
 
         [JsonProperty("Version")]
         public string Version { get; set; }
+
+        /// <summary>联机码中的鉴权口令（手机端解码联机码后填写）。</summary>
+        [JsonProperty("Token")]
+        public string Token { get; set; }
     }
 
     /// <summary>
@@ -37,6 +44,9 @@ namespace YeyouPlusPlus.PhoneBox
     /// </summary>
     public class ConfigMessage
     {
+        [JsonProperty("Type")]
+        public MessageType Type { get; set; } = MessageType.Config;
+
         [JsonProperty("Width")]
         public int Width { get; set; }
 
@@ -58,6 +68,9 @@ namespace YeyouPlusPlus.PhoneBox
     /// </summary>
     public class ReadyMessage
     {
+        [JsonProperty("Type")]
+        public MessageType Type { get; set; } = MessageType.Ready;
+
         [JsonProperty("Ready")]
         public bool Ready { get; set; }
     }
@@ -67,6 +80,9 @@ namespace YeyouPlusPlus.PhoneBox
     /// </summary>
     public class KeyMessage
     {
+        [JsonProperty("Type")]
+        public MessageType Type { get; set; } = MessageType.Key;
+
         /// <summary>虚拟键码（Virtual-Key Code）。</summary>
         [JsonProperty("KeyCode")]
         public int KeyCode { get; set; }
@@ -92,7 +108,8 @@ namespace YeyouPlusPlus.PhoneBox
         private static readonly JsonSerializerSettings SerializerSettings =
             new JsonSerializerSettings
             {
-                Formatting = Formatting.Indented,
+                // 控制通道按 '\n' 行分帧，消息必须为单行 JSON，因此这里用紧凑格式。
+                Formatting = Formatting.None,
                 NullValueHandling = NullValueHandling.Ignore
             };
 

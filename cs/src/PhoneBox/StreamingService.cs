@@ -66,6 +66,12 @@ namespace YeyouPlusPlus.PhoneBox
             get { return running; }
         }
 
+        /// <summary>
+        /// 捕获目标窗口句柄（页游主窗口或当前游戏标签页的 HwndHost 句柄）。
+        /// 为 0 时回退抓主显示器全屏。
+        /// </summary>
+        public IntPtr CaptureWindow { get; set; }
+
         /// <summary>启动捕获线程与编码线程。</summary>
         public void Start()
         {
@@ -155,17 +161,21 @@ namespace YeyouPlusPlus.PhoneBox
 
         /// <summary>
         /// 捕获线程：按帧率抓屏，写单缓冲。新帧到达时直接丢弃缓冲中尚未被编码的旧帧。
-        /// 本阶段抓全屏（主显示器），缩放交由后续 FFmpeg 编码器处理。
+        /// 捕获目标优先为 CaptureWindow（游戏窗口），未设置时抓主显示器全屏。
         /// </summary>
         private void CaptureLoop()
         {
-            var bounds = Screen.PrimaryScreen.Bounds;
-
             while (running)
             {
                 try
                 {
-                    var frame = ScreenCapturer.Capture(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+                    var frame = CaptureWindow != IntPtr.Zero
+                        ? ScreenCapturer.Capture(CaptureWindow)
+                        : ScreenCapturer.Capture(
+                            Screen.PrimaryScreen.Bounds.X,
+                            Screen.PrimaryScreen.Bounds.Y,
+                            Screen.PrimaryScreen.Bounds.Width,
+                            Screen.PrimaryScreen.Bounds.Height);
 
                     lock (frameLock)
                     {
