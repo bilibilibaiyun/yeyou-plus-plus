@@ -1,32 +1,59 @@
 package com.yeyou.phonebox
 
 import android.os.Bundle
-import android.text.InputType
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
+import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.SeekBar
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 
 /**
- * 手机盒子主界面。
+ * 页游++ 手机盒子主界面。
  *
- * 布局：SurfaceView（显示电脑画面）+ VirtualGamepadView（半透明悬浮虚拟按键）。
- * 流程：弹出「输入联机码」对话框 → 解码 → TCP 握手（Hello/Config/Ready）→ 启动 UDP 接收与硬解。
+ * 流程：主页输入联机码 → 连接 → 游戏页（投屏画面 + 可自定义虚拟按键）。
+ * 虚拟按键支持「大小 / 位置 / 透明度 / 映射键」自定义，布局本地持久化。
  */
 class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     companion object {
         /** 手机端 UDP 监听端口，与电脑端 PhoneBoxConfig.UdpPort 一致。 */
         private const val UDP_PORT = 8761
+
+        private const val SIZE_MIN = 0.04f
+        private const val SIZE_MAX = 0.30f
+        private const val OPACITY_MIN = 0.05f
+        private const val OPACITY_MAX = 1.0f
     }
 
+    // 主页
+    private lateinit var homePage: LinearLayout
+    private lateinit var joinCodeInput: EditText
+    private lateinit var connectButton: Button
+
+    // 游戏页
+    private lateinit var gamePage: FrameLayout
     private lateinit var surfaceView: SurfaceView
     private lateinit var gamepadView: VirtualGamepadView
     private lateinit var statusText: TextView
+    private lateinit var settingsButton: Button
+
+    // 编辑面板
+    private lateinit var editPanel: LinearLayout
+    private lateinit var editSelectedLabel: TextView
+    private lateinit var editMapKeyButton: Button
+    private lateinit var editSizeSeek: SeekBar
+    private lateinit var editOpacitySeek: SeekBar
+    private lateinit var editAddButton: Button
+    private lateinit var editDeleteButton: Button
+    private lateinit var editResetButton: Button
+    private lateinit var editDoneButton: Button
 
     private var surface: Surface? = null
     private var config: ControlChannel.StreamConfig? = null
@@ -36,55 +63,98 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private var decoder: VideoDecoder? = null
     private var udpReceiver: UdpStreamReceiver? = null
 
+    /** 编辑面板当前选中的按键。 */
+    private var selectedButton: GamepadButton? = null
+
+    /** 回填滑块时置位，避免触发监听造成循环。 */
+    private var updatingSliders = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        homePage = findViewById(R.id.home_page)
+        gamePage = findViewById(R.id.game_page)
+        joinCodeInput = findViewById(R.id.join_code_input)
+        connectButton = findViewById(R.id.connect_button)
         surfaceView = findViewById(R.id.surface_view)
         gamepadView = findViewById(R.id.gamepad_view)
         statusText = findViewById(R.id.status_text)
+        settingsButton = findViewById(R.id.settings_button)
+        editPanel = findViewById(R.id.edit_panel)
+        editSelectedLabel = findViewById(R.id.edit_selected_label)
+        editMapKeyButton = findViewById(R.id.edit_map_key_button)
+        editSizeSeek = findViewById(R.id.edit_size_seek)
+        editOpacitySeek = findViewById(R.id.edit_opacity_seek)
+        editAddButton = findViewById(R.id.edit_add_button)
+        editDeleteButton = findViewById(R.id.edit_delete_button)
+        editResetButton = findViewById(R.id.edit_reset_button)
+        editDoneButton = findViewById(R.id.edit_done_button)
 
         surfaceView.holder.addCallback(this)
 
+        // 载入本地已保存的按键布局，无则用默认。
+        gamepadView.setButtons(GamepadLayoutStore.load(this) ?: GamepadLayoutStore.defaultButtons())
+
         gamepadView.listener = object : VirtualGamepadView.Listener {
-            override fun onButtonDown(button: VirtualGamepadView.GamepadButton) {
+            override fun onButtonDown(button: GamepadButton) {
                 keySender?.sendDown(button.keyCode)
             }
 
-            override fun onButtonUp(button: VirtualGamepadView.GamepadButton) {
+            override fun onButtonUp(button: GamepadButton) {
                 keySender?.sendUp(button.keyCode)
+            }
+
+            override fun onButtonSelected(button: GamepadButton?) {
+                onSelectButton(button)
+            }
+
+            override fun onLayoutChanged(buttons: List<GamepadButton>) {
+                GamepadLayoutStore.save(this@MainActivity, buttons)
             }
         }
 
-        showJoinCodeDialog()
-    }
+        connectButton.setOnClickListener {
+            handleJoinCode(joinCodeInput.text.toString().trim())
+        }
+        settingsButton.setOnClickListener { enterEditMode() }
+        editDoneButton.setOnClickListener { exitEditMode() }
+        editMapKeyButton.setOnClickListener { showKeyPicker() }
+        editAddButton.setOnClickListener { addButton() }
+        editDeleteButton.setOnClickListener { deleteSelected() }
+        editResetButton.setOnClickListener { resetLayout() }
 
-    /** 弹出联机码输入对话框。 */
-    private fun showJoinCodeDialog() {
-        setStatus(R.string.status_idle)
-
-        val input = EditText(this)
-        input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-        input.hint = getString(R.string.join_code_hint)
-        input.isSingleLine = true
-        val padding = (16 * resources.displayMetrics.density).toInt()
-        input.setPadding(padding, padding, padding, padding)
-
-        AlertDialog.Builder(this)
-            .setTitle(R.string.join_code_title)
-            .setView(input)
-            .setCancelable(false)
-            .setPositiveButton(R.string.connect) { _, _ ->
-                handleJoinCode(input.text.toString().trim())
+        editSizeSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                if (updatingSliders || !fromUser) return
+                val b = selectedButton ?: return
+                val size = SIZE_MIN + progress / 100f * (SIZE_MAX - SIZE_MIN)
+                gamepadView.updateButton(b.copy(size = size))
             }
-            .show()
+
+            override fun onStartTrackingTouch(seekBar: SeekBar) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar) {}
+        })
+
+        editOpacitySeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                if (updatingSliders || !fromUser) return
+                val b = selectedButton ?: return
+                val opacity = OPACITY_MIN + progress / 100f * (OPACITY_MAX - OPACITY_MIN)
+                gamepadView.updateButton(b.copy(opacity = opacity))
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar) {}
+        })
     }
 
-    /** 解码联机码并启动连接流程。 */
+    // ---- 主页 / 连接 ----
+
     private fun handleJoinCode(code: String) {
         val info = JoinCodeDecoder.decode(code)
         if (info == null) {
-            showErrorAndRetry(getString(R.string.invalid_join_code))
+            showError(getString(R.string.invalid_join_code))
             return
         }
 
@@ -95,17 +165,17 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
         val ctrl = ControlChannel(info.ip, info.port, info.token)
         ctrl.listener = object : ControlChannel.Listener {
-            override fun onConfig(cfg: ControlChannel.StreamConfig) {
+            override fun onConfig(config: ControlChannel.StreamConfig) {
                 runOnUiThread {
-                    config = cfg
-                    gamepadView.applyKeyLayout(cfg.keyLayout)
+                    this@MainActivity.config = config
+                    showGamePage()
                     tryStartStreaming()
                 }
             }
 
             override fun onError(message: String) {
                 runOnUiThread {
-                    showErrorAndRetry(getString(R.string.status_error, message))
+                    showError(getString(R.string.status_error, message))
                 }
             }
 
@@ -125,10 +195,31 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         ctrl.connect()
     }
 
-    /**
-     * 当 Surface 与 Config 都就绪时启动「解码 + UDP 接收」，随后发送 Ready。
-     * 先让 UDP 在听、解码器就绪，再发 Ready，避免丢失开头几帧。
-     */
+    private fun showGamePage() {
+        homePage.visibility = View.GONE
+        gamePage.visibility = View.VISIBLE
+    }
+
+    private fun showHomePage() {
+        exitEditMode()
+        gamePage.visibility = View.GONE
+        homePage.visibility = View.VISIBLE
+        setStatus(R.string.status_idle)
+    }
+
+    private fun showError(message: String) {
+        resetSession()
+        statusText.text = message
+        AlertDialog.Builder(this)
+            .setTitle(R.string.status_error_title)
+            .setMessage(message)
+            .setCancelable(false)
+            .setPositiveButton(android.R.string.ok) { _, _ -> showHomePage() }
+            .show()
+    }
+
+    // ---- 推流 / 解码 ----
+
     private fun tryStartStreaming() {
         val s = surface ?: return
         val cfg = config ?: return
@@ -138,7 +229,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
         val videoDecoder = VideoDecoder(s)
         if (!videoDecoder.start(cfg.width, cfg.height)) {
-            showErrorAndRetry(getString(R.string.status_error, "视频解码器启动失败"))
+            showError(getString(R.string.status_error, "视频解码器启动失败"))
             return
         }
         decoder = videoDecoder
@@ -147,10 +238,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         val receiver = UdpStreamReceiver(UDP_PORT, depacketizer, videoDecoder)
         receiver.listener = object : UdpStreamReceiver.Listener {
             override fun onError(message: String) {
-                runOnUiThread {
-                    // UDP 单包异常不弹窗打断，仅提示链路异常。
-                    setStatus(R.string.status_disconnected)
-                }
+                runOnUiThread { setStatus(R.string.status_disconnected) }
             }
         }
         receiver.start()
@@ -160,7 +248,6 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         setStatus(R.string.status_streaming)
     }
 
-    /** 停止解码与 UDP 接收（保留配置与控制通道，供 Surface 重建后恢复）。 */
     private fun stopStreaming() {
         udpReceiver?.stop()
         udpReceiver = null
@@ -168,13 +255,107 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         decoder = null
     }
 
-    /** 完整复位会话：停止推流、断开控制通道、清空配置。 */
     private fun resetSession() {
         stopStreaming()
         config = null
         channel?.disconnect()
         channel = null
         keySender = null
+    }
+
+    // ---- 按键编辑 ----
+
+    private fun enterEditMode() {
+        gamepadView.editMode = true
+        editPanel.visibility = View.VISIBLE
+        onSelectButton(null)
+    }
+
+    private fun exitEditMode() {
+        gamepadView.editMode = false
+        editPanel.visibility = View.GONE
+        onSelectButton(null)
+    }
+
+    private fun onSelectButton(button: GamepadButton?) {
+        selectedButton = button
+        if (button == null) {
+            editSelectedLabel.text = getString(R.string.edit_none_selected)
+            setSlidersEnabled(false)
+        } else {
+            editSelectedLabel.text = getString(
+                R.string.edit_selected_fmt,
+                button.label,
+                KeyCodes.labelOf(button.keyCode)
+            )
+            setSlidersEnabled(true)
+            refreshSliders(button)
+        }
+    }
+
+    private fun setSlidersEnabled(enabled: Boolean) {
+        editSizeSeek.isEnabled = enabled
+        editOpacitySeek.isEnabled = enabled
+        editMapKeyButton.isEnabled = enabled
+        editDeleteButton.isEnabled = enabled
+    }
+
+    private fun refreshSliders(button: GamepadButton) {
+        updatingSliders = true
+        editSizeSeek.progress =
+            ((button.size - SIZE_MIN) / (SIZE_MAX - SIZE_MIN) * 100).toInt().coerceIn(0, 100)
+        editOpacitySeek.progress =
+            ((button.opacity - OPACITY_MIN) / (OPACITY_MAX - OPACITY_MIN) * 100).toInt().coerceIn(0, 100)
+        updatingSliders = false
+    }
+
+    private fun showKeyPicker() {
+        val b = selectedButton ?: return
+        val labels = KeyCodes.all.map { it.label }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.pick_key_title)
+            .setItems(labels) { _, which ->
+                val opt = KeyCodes.all[which]
+                gamepadView.updateButton(b.copy(keyCode = opt.code, label = opt.label))
+                onSelectButton(b.copy(keyCode = opt.code, label = opt.label))
+            }
+            .show()
+    }
+
+    private fun addButton() {
+        val nextId = (gamepadView.buttons.maxOfOrNull { it.id } ?: 0) + 1
+        val def = KeyCodes.all.firstOrNull { it.code == 32 } ?: KeyCodes.all[0]
+        val button = GamepadButton(
+            id = nextId,
+            label = def.label,
+            keyCode = def.code,
+            x = 0.5f,
+            y = 0.65f,
+            size = 0.09f,
+            opacity = 0.45f
+        )
+        val newButtons = gamepadView.buttons + button
+        gamepadView.setButtons(newButtons)
+        GamepadLayoutStore.save(this, newButtons)
+        gamepadView.select(button.id)
+        onSelectButton(button)
+    }
+
+    private fun deleteSelected() {
+        val b = selectedButton ?: return
+        val newButtons = gamepadView.buttons.filter { it.id != b.id }
+        gamepadView.setButtons(newButtons)
+        GamepadLayoutStore.save(this, newButtons)
+        gamepadView.select(-1)
+        onSelectButton(null)
+    }
+
+    private fun resetLayout() {
+        val defaults = GamepadLayoutStore.defaultButtons()
+        gamepadView.setButtons(defaults)
+        GamepadLayoutStore.save(this, defaults)
+        gamepadView.select(-1)
+        onSelectButton(null)
     }
 
     // ---- SurfaceHolder.Callback ----
@@ -185,7 +366,6 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        // 横屏全屏下尺寸变化无需额外处理。
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
@@ -193,41 +373,20 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         stopStreaming()
     }
 
-    // ---- UI 辅助 ----
+    // ---- 辅助 ----
 
     private fun setStatus(resId: Int) {
         statusText.text = getString(resId)
     }
 
-    private fun showErrorAndRetry(message: String) {
-        resetSession()
-        statusText.text = message
-
-        AlertDialog.Builder(this)
-            .setTitle(R.string.status_error_title)
-            .setMessage(message)
-            .setCancelable(false)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                showJoinCodeDialog()
+    override fun onBackPressed() {
+        when {
+            gamepadView.editMode -> exitEditMode()
+            gamePage.visibility == View.VISIBLE -> {
+                resetSession()
+                showHomePage()
             }
-            .show()
-    }
-
-    private fun hideSystemUi() {
-        window.decorView.systemUiVisibility = (
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                or View.SYSTEM_UI_FLAG_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            )
-    }
-
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) {
-            hideSystemUi()
+            else -> super.onBackPressed()
         }
     }
 

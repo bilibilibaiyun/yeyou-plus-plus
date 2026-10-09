@@ -57,6 +57,10 @@ class VideoDecoder(private val surface: Surface) {
     /**
      * 喂入一个 Annex-B NAL（含起始码）。
      * 由 UDP 接收线程调用，内部同时完成输入入队与输出上屏，保持低延迟。
+     *
+     * 重要：用短超时重试等待输入缓冲，避免在缓冲暂不可用时把 SPS/PPS 这类
+     * 关键 NAL 直接丢弃（否则首帧无法解码 → 黑屏）。仅重试若干次后仍无缓冲才放弃，
+     * 以防 UDP 线程被无限阻塞。
      */
     fun feed(annexBNalu: ByteArray) {
         val decoder = codec ?: return
@@ -65,7 +69,15 @@ class VideoDecoder(private val surface: Surface) {
         }
 
         try {
-            val inIndex = decoder.dequeueInputBuffer(0)
+            var inIndex = -1
+            var attempts = 0
+            while (inIndex < 0 && attempts < 8) {
+                inIndex = decoder.dequeueInputBuffer(5_000) // 5ms
+                if (inIndex < 0) {
+                    attempts++
+                }
+            }
+
             if (inIndex >= 0) {
                 val inputBuffer = decoder.getInputBuffer(inIndex)
                 if (inputBuffer != null && annexBNalu.size <= inputBuffer.capacity()) {

@@ -8,14 +8,15 @@ import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
-import org.json.JSONObject
 
 /**
- * 虚拟按键悬浮层。
+ * 可高度自定义的虚拟按键悬浮层。
  *
- * 默认布局：左侧方向键（上下左右十字）+ 右侧 A/B/C/D 动作键（菱形排列）。
- * 支持多点触控：每个 pointer 独立跟踪，按下/松开回调，按下时视觉高亮。
- * 半透明悬浮在 SurfaceView 之上，不影响画面显示。
+ * 两种模式：
+ *  - 游玩模式（默认）：按下/松开回调，半透明悬浮在画面之上。
+ *  - 编辑模式（editMode=true）：单击选中、拖动移动；大小/透明度/映射按键由外层面板控制。
+ *
+ * 每个按键的「位置/大小/透明度/映射键」都可自定义，布局经 [GamepadLayoutStore] 持久化。
  */
 class VirtualGamepadView @JvmOverloads constructor(
     context: Context,
@@ -23,52 +24,48 @@ class VirtualGamepadView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
-    /** 单个虚拟按键。 */
-    data class GamepadButton(
-        val name: String,
-        val label: String,
-        val keyCode: Int
-    )
-
     interface Listener {
         fun onButtonDown(button: GamepadButton)
         fun onButtonUp(button: GamepadButton)
-    }
-
-    companion object {
-        /**
-         * 默认布局：
-         * 方向键 → Windows VK：左 37 / 上 38 / 下 40 / 右 39
-         * 动作键 A/B/C/D → Windows VK：A=88(X)、B=90(Z)、C=67(C)、D=86(V)
-         */
-        fun defaultButtons(): List<GamepadButton> = listOf(
-            GamepadButton("left", "←", 37),
-            GamepadButton("up", "↑", 38),
-            GamepadButton("down", "↓", 40),
-            GamepadButton("right", "→", 39),
-            GamepadButton("A", "A", 88),
-            GamepadButton("B", "B", 90),
-            GamepadButton("C", "C", 67),
-            GamepadButton("D", "D", 86)
-        )
+        fun onButtonSelected(button: GamepadButton?)
+        fun onLayoutChanged(buttons: List<GamepadButton>)
     }
 
     var listener: Listener? = null
 
-    private var buttons: List<GamepadButton> = defaultButtons()
+    /** 当前按键布局。 */
+    var buttons: List<GamepadButton> = GamepadLayoutStore.defaultButtons()
+        private set
 
-    /** button 下标 → 屏幕区域。 */
-    private val buttonRects = HashMap<Int, RectF>()
+    /** 是否处于编辑模式。 */
+    var editMode: Boolean = false
+        set(value) {
+            if (field != value) {
+                field = value
+                selectedId = -1
+                listener?.onButtonSelected(null)
+                invalidate()
+            }
+        }
 
-    /** pointerId → 按下的 button 下标。 */
-    private val pointerToButton = HashMap<Int, Int>()
-
-    /** button 下标 → 被多少个 pointer 按下。 */
-    private val buttonPressCount = HashMap<Int, Int>()
+    /** 当前选中的按键 id（编辑模式用）。 */
+    var selectedId: Int = -1
+        private set
 
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val selPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    // 游玩模式多点触控状态
+    private val pointerToButton = HashMap<Int, Int>()
+    private val buttonPressCount = HashMap<Int, Int>()
+
+    // 编辑模式拖拽状态
+    private var draggingId = -1
+    private var dragPointerId = -1
+    private var dragLastX = 0f
+    private var dragLastY = 0f
 
     init {
         strokePaint.style = Paint.Style.STROKE
@@ -78,96 +75,90 @@ class VirtualGamepadView @JvmOverloads constructor(
         textPaint.color = Color.WHITE
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.isFakeBoldText = true
+
+        selPaint.style = Paint.Style.STROKE
+        selPaint.color = Color.argb(255, 0, 200, 255)
+        selPaint.strokeWidth = dp(3f)
     }
 
     fun setButtons(newButtons: List<GamepadButton>) {
         buttons = newButtons.toList()
-        buttonRects.clear()
         invalidate()
     }
 
-    /**
-     * 应用电脑端下发的按键布局（Config.KeyLayout 的 JSON 字符串）。
-     * 仅同步方向键的虚拟键码；其余沿用本地默认布局。解析失败静默忽略。
-     */
-    fun applyKeyLayout(json: String?) {
-        if (json.isNullOrBlank()) {
-            return
-        }
-        try {
-            val root = JSONObject(json)
-            val keys = root.optJSONArray("keys") ?: return
-            val directionCodes = HashMap<String, Int>()
-            for (i in 0 until keys.length()) {
-                val item = keys.optJSONObject(i) ?: continue
-                val name = item.optString("name", "")
-                val code = item.optInt("keyCode", 0)
-                if (code > 0 && name in setOf("up", "down", "left", "right")) {
-                    directionCodes[name] = code
-                }
-            }
-            if (directionCodes.isEmpty()) {
-                return
-            }
-            val updated = buttons.map { button ->
-                directionCodes[button.name]?.let { code -> button.copy(keyCode = code) } ?: button
-            }
-            setButtons(updated)
-        } catch (_: Exception) {
-            // 布局解析失败时保持默认布局。
-        }
+    /** 外部选中指定按键（编辑模式用）。传 -1 表示取消选中。 */
+    fun select(id: Int) {
+        selectedId = id
+        invalidate()
     }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        layoutButtons(w, h)
+    /** 更新某个按键（保留 id），并触发 onLayoutChanged。 */
+    fun updateButton(updated: GamepadButton) {
+        buttons = buttons.map { if (it.id == updated.id) updated else it }
+        listener?.onLayoutChanged(buttons)
+        invalidate()
+    }
+
+    // ---- 几何 ----
+
+    private fun rectFor(b: GamepadButton): RectF {
+        val r = b.size * minOf(width, height).toFloat()
+        return RectF(b.x * width - r, b.y * height - r, b.x * width + r, b.y * height + r)
+    }
+
+    /** 命中检测：返回按钮下标（后绘制的优先）。 */
+    private fun hitTest(x: Float, y: Float): Int? {
+        for (i in buttons.indices.reversed()) {
+            if (rectFor(buttons[i]).contains(x, y)) {
+                return i
+            }
+        }
+        return null
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (buttonRects.isEmpty() && width > 0 && height > 0) {
-            layoutButtons(width, height)
-        }
-
-        buttons.forEachIndexed { index, button ->
-            val rect = buttonRects[index] ?: return@forEachIndexed
+        for ((index, b) in buttons.withIndex()) {
+            val rect = rectFor(b)
             val pressed = (buttonPressCount[index] ?: 0) > 0
+            val alpha = (b.opacity.coerceIn(0.05f, 1f) * 255).toInt()
 
-            // 按下高亮：绿色半透明；未按下：白色低透明。
             fillPaint.color = if (pressed) {
-                Color.argb(170, 76, 175, 80)
+                Color.argb(alpha, 76, 175, 80)
             } else {
-                Color.argb(70, 255, 255, 255)
+                Color.argb(alpha, 255, 255, 255)
             }
-
             canvas.drawOval(rect, fillPaint)
             canvas.drawOval(rect, strokePaint)
 
+            if (editMode && b.id == selectedId) {
+                canvas.drawOval(rect, selPaint)
+            }
+
+            val textSize = b.size * minOf(width, height) * 0.9f
+            textPaint.textSize = textSize
+            textPaint.alpha = alpha
             val baseline = rect.centerY() - (textPaint.ascent() + textPaint.descent()) / 2f
-            canvas.drawText(button.label, rect.centerX(), baseline, textPaint)
+            canvas.drawText(b.label, rect.centerX(), baseline, textPaint)
         }
+        textPaint.alpha = 255
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (buttonRects.isEmpty()) {
-            return false
-        }
+        return if (editMode) handleEditTouch(event) else handlePlayTouch(event)
+    }
 
+    // ---- 游玩模式 ----
+
+    private fun handlePlayTouch(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN,
             MotionEvent.ACTION_POINTER_DOWN -> {
-                val pointerIndex = event.actionIndex
-                handleDown(
-                    pointerId = event.getPointerId(pointerIndex),
-                    x = event.getX(pointerIndex),
-                    y = event.getY(pointerIndex)
-                )
+                val idx = event.actionIndex
+                handleDown(event.getPointerId(idx), event.getX(idx), event.getY(idx))
                 return true
             }
-            MotionEvent.ACTION_MOVE -> {
-                // 本阶段不处理「手指跨按键拖动」，只跟踪按下/松开。
-                return true
-            }
+            MotionEvent.ACTION_MOVE -> return true
             MotionEvent.ACTION_UP,
             MotionEvent.ACTION_POINTER_UP -> {
                 handleUp(event.getPointerId(event.actionIndex))
@@ -187,7 +178,6 @@ class VirtualGamepadView @JvmOverloads constructor(
         }
         val index = hitTest(x, y) ?: return
         pointerToButton[pointerId] = index
-
         val count = (buttonPressCount[index] ?: 0) + 1
         buttonPressCount[index] = count
         if (count == 1) {
@@ -208,56 +198,58 @@ class VirtualGamepadView @JvmOverloads constructor(
         invalidate()
     }
 
-    private fun hitTest(x: Float, y: Float): Int? {
-        buttonRects.forEach { (index, rect) ->
-            if (rect.contains(x, y)) {
-                return index
+    // ---- 编辑模式：单击选中 + 拖动移动 ----
+
+    private fun handleEditTouch(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val x = event.getX()
+                val y = event.getY()
+                val hit = hitTest(x, y)
+                if (hit != null) {
+                    selectedId = buttons[hit].id
+                    listener?.onButtonSelected(buttons[hit])
+                    draggingId = selectedId
+                    dragPointerId = event.getPointerId(0)
+                    dragLastX = x
+                    dragLastY = y
+                } else {
+                    selectedId = -1
+                    listener?.onButtonSelected(null)
+                }
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (draggingId < 0) {
+                    return true
+                }
+                val idx = event.findPointerIndex(dragPointerId)
+                if (idx >= 0) {
+                    val x = event.getX(idx)
+                    val y = event.getY(idx)
+                    val b = buttons.firstOrNull { it.id == draggingId } ?: return true
+                    val nx = (b.x * width + (x - dragLastX)) / width
+                    val ny = (b.y * height + (y - dragLastY)) / height
+                    updateButton(
+                        b.copy(
+                            x = nx.coerceIn(0.02f, 0.98f),
+                            y = ny.coerceIn(0.02f, 0.98f)
+                        )
+                    )
+                    dragLastX = x
+                    dragLastY = y
+                }
+                return true
+            }
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_CANCEL -> {
+                draggingId = -1
+                dragPointerId = -1
+                return true
             }
         }
-        return null
-    }
-
-    /**
-     * 布局计算：
-     *  - 左侧方向键十字排列，中心 (w*0.25, h*0.6)
-     *  - 右侧动作键菱形排列，中心 (w*0.78, h*0.6)
-     * 按键半径按屏幕短边缩放，保证小屏可用。
-     */
-    private fun layoutButtons(w: Int, h: Int) {
-        buttonRects.clear()
-        if (w <= 0 || h <= 0 || buttons.isEmpty()) {
-            return
-        }
-
-        val radius = minOf(w, h) * 0.11f
-        val gap = radius * 0.25f
-        val step = radius * 2f + gap
-
-        val dpadCx = w * 0.25f
-        val dpadCy = h * 0.60f
-        val actionCx = w * 0.78f
-        val actionCy = h * 0.60f
-
-        val centers = HashMap<String, FloatArray>()
-        centers["left"] = floatArrayOf(dpadCx - step, dpadCy)
-        centers["up"] = floatArrayOf(dpadCx, dpadCy - step)
-        centers["down"] = floatArrayOf(dpadCx, dpadCy + step)
-        centers["right"] = floatArrayOf(dpadCx + step, dpadCy)
-
-        // 动作键：A 右 / B 下 / C 左 / D 上（菱形，仿游戏手柄 ABXY 布局）。
-        centers["A"] = floatArrayOf(actionCx + step, actionCy)
-        centers["B"] = floatArrayOf(actionCx, actionCy + step)
-        centers["C"] = floatArrayOf(actionCx - step, actionCy)
-        centers["D"] = floatArrayOf(actionCx, actionCy - step)
-
-        buttons.forEachIndexed { index, button ->
-            val center = centers[button.name] ?: return@forEachIndexed
-            val cx = center[0]
-            val cy = center[1]
-            buttonRects[index] = RectF(cx - radius, cy - radius, cx + radius, cy + radius)
-        }
-
-        textPaint.textSize = radius * 0.9f
+        return super.onTouchEvent(event)
     }
 
     private fun dp(value: Float): Float = value * context.resources.displayMetrics.density

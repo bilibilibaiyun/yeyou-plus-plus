@@ -1,32 +1,266 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/black">
 
-    <!-- 电脑画面：MediaCodec 解码输出到该 Surface -->
-    <SurfaceView
-        android:id="@+id/surface_view"
+    <!-- ============ 主页：联机码输入 ============ -->
+    <LinearLayout
+        android:id="@+id/home_page"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="32dp">
 
-    <!-- 半透明悬浮虚拟按键层 -->
-    <com.yeyou.phonebox.VirtualGamepadView
-        android:id="@+id/gamepad_view"
+        <TextView
+            android:id="@+id/home_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/app_name"
+            android:textColor="#FFFFFF"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/home_subtitle"
+            android:textColor="#99FFFFFF"
+            android:textSize="13sp"
+            android:layout_marginBottom="32dp" />
+
+        <EditText
+            android:id="@+id/join_code_input"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:maxWidth="420dp"
+            android:layout_gravity="center_horizontal"
+            android:gravity="center"
+            android:hint="@string/join_code_hint"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#66FFFFFF"
+            android:textSize="18sp"
+            android:inputType="textVisiblePassword"
+            android:singleLine="true"
+            android:background="@drawable/bg_join_input" />
+
+        <Button
+            android:id="@+id/connect_button"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:maxWidth="420dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="16dp"
+            android:text="@string/connect"
+            android:textSize="17sp"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/bg_connect_button" />
+
+        <TextView
+            android:id="@+id/home_poem"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="40dp"
+            android:text="@string/home_poem"
+            android:textColor="#66FFFFFF"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <!-- ============ 游戏页：投屏 + 虚拟按键 ============ -->
+    <FrameLayout
+        android:id="@+id/game_page"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:visibility="gone">
 
-    <!-- 连接状态提示 -->
-    <TextView
-        android:id="@+id/status_text"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|start"
-        android:layout_margin="8dp"
-        android:padding="6dp"
-        android:background="#66000000"
-        android:textColor="#FFFFFF"
-        android:textSize="12sp"
-        android:text="@string/status_idle" />
+        <!-- 电脑画面 -->
+        <SurfaceView
+            android:id="@+id/surface_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- 虚拟按键悬浮层 -->
+        <com.yeyou.phonebox.VirtualGamepadView
+            android:id="@+id/gamepad_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- 顶部状态条 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="8dp">
+
+            <TextView
+                android:id="@+id/status_text"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:padding="6dp"
+                android:background="#66000000"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:text="@string/status_idle" />
+
+            <Button
+                android:id="@+id/settings_button"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:minWidth="0dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="@string/settings"
+                android:textSize="13sp"
+                android:textColor="#FFFFFF"
+                android:background="@drawable/bg_connect_button" />
+        </LinearLayout>
+
+        <!-- 按键编辑面板 -->
+        <LinearLayout
+            android:id="@+id/edit_panel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:background="#E6000000"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/edit_title"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/edit_done_button"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="@string/edit_done"
+                    android:textColor="#FFFFFF"
+                    android:background="@drawable/bg_connect_button" />
+            </LinearLayout>
+
+            <!-- 选中按键 + 映射 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="8dp">
+
+                <TextView
+                    android:id="@+id/edit_selected_label"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/edit_none_selected"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="14sp" />
+
+                <Button
+                    android:id="@+id/edit_map_key_button"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="@string/edit_map_key"
+                    android:textColor="#FFFFFF"
+                    android:background="@drawable/bg_connect_button" />
+            </LinearLayout>
+
+            <!-- 大小 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="6dp">
+
+                <TextView
+                    android:layout_width="72dp"
+                    android:layout_height="wrap_content"
+                    android:text="@string/edit_size"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="13sp" />
+
+                <SeekBar
+                    android:id="@+id/edit_size_seek"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:max="100" />
+            </LinearLayout>
+
+            <!-- 透明度 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="72dp"
+                    android:layout_height="wrap_content"
+                    android:text="@string/edit_opacity"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="13sp" />
+
+                <SeekBar
+                    android:id="@+id/edit_opacity_seek"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:max="100" />
+            </LinearLayout>
+
+            <!-- 操作按钮 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp">
+
+                <Button
+                    android:id="@+id/edit_add_button"
+                    android:layout_width="0dp"
+                    android:layout_height="42dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    android:text="@string/edit_add"
+                    android:textColor="#FFFFFF"
+                    android:background="@drawable/bg_connect_button" />
+
+                <Button
+                    android:id="@+id/edit_delete_button"
+                    android:layout_width="0dp"
+                    android:layout_height="42dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    android:text="@string/edit_delete"
+                    android:textColor="#FFFFFF"
+                    android:background="@drawable/bg_connect_button" />
+
+                <Button
+                    android:id="@+id/edit_reset_button"
+                    android:layout_width="0dp"
+                    android:layout_height="42dp"
+                    android:layout_weight="1"
+                    android:text="@string/edit_reset"
+                    android:textColor="#FFFFFF"
+                    android:background="@drawable/bg_connect_button" />
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
 </FrameLayout>

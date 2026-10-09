@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.IO;
 using System.Runtime.InteropServices;
 
 namespace YeyouPlusPlus.PhoneBox
@@ -52,6 +53,11 @@ namespace YeyouPlusPlus.PhoneBox
 
         // WELS_LOG
         private const int WelsLogQuiet = 0;
+
+        // EParameterSetStrategy
+        private const int SpsPpsIncreasingId = 1;
+
+        private static readonly byte[] AnnexBStartCode = { 0x00, 0x00, 0x00, 0x01 };
 
         private readonly object sync = new object();
 
@@ -235,69 +241,58 @@ namespace YeyouPlusPlus.PhoneBox
             return BuildAnnexB(info);
         }
 
-        /// <summary>从 SFrameBSInfo 提取各层 NAL 并加 Annex-B 起始码拼装。</summary>
+        /// <summary>从 SFrameBSInfo 提取各层 NAL 并拼装为 Annex-B 字节流。</summary>
+        /// <remarks>
+        /// 实测 OpenH264 的 pBsBuf 输出每个 NAL 已自带 4 字节起始码（00 00 00 01），
+        /// 且 pNalLengthInByte 的长度也把起始码计入其中。因此这里直接原样拷贝，
+        /// 仅在检测到 NAL 缺失起始码时补一个（兼容不同 OpenH264 版本）。
+        /// </remarks>
         private static byte[] BuildAnnexB(SFrameBSInfo info)
         {
             int layerNum = Math.Min(info.iLayerNum, MaxLayerNumOfFrame);
-            int total = 0;
-
-            // 第一遍：统计总字节数（每个 NAL 前加 4 字节 00 00 00 01）。
-            for (int i = 0; i < layerNum; i++)
+            using (var ms = new MemoryStream())
             {
-                var layer = info.sLayerInfo[i];
-                if (layer.eFrameType == VideoFrameTypeSkip || layer.iNalCount <= 0
-                    || layer.pBsBuf == IntPtr.Zero || layer.pNalLengthInByte == IntPtr.Zero)
+                for (int i = 0; i < layerNum; i++)
                 {
-                    continue;
-                }
-                for (int n = 0; n < layer.iNalCount; n++)
-                {
-                    int len = Marshal.ReadInt32(layer.pNalLengthInByte, n * sizeof(int));
-                    if (len > 0)
-                    {
-                        total += 4 + len;
-                    }
-                }
-            }
-
-            if (total == 0)
-            {
-                return null;
-            }
-
-            var result = new byte[total];
-            int dst = 0;
-
-            // 第二遍：逐 NAL 拷贝。
-            for (int i = 0; i < layerNum; i++)
-            {
-                var layer = info.sLayerInfo[i];
-                if (layer.eFrameType == VideoFrameTypeSkip || layer.iNalCount <= 0
-                    || layer.pBsBuf == IntPtr.Zero || layer.pNalLengthInByte == IntPtr.Zero)
-                {
-                    continue;
-                }
-
-                int srcOffset = 0;
-                for (int n = 0; n < layer.iNalCount; n++)
-                {
-                    int len = Marshal.ReadInt32(layer.pNalLengthInByte, n * sizeof(int));
-                    if (len <= 0)
+                    var layer = info.sLayerInfo[i];
+                    if (layer.eFrameType == VideoFrameTypeSkip || layer.iNalCount <= 0
+                        || layer.pBsBuf == IntPtr.Zero || layer.pNalLengthInByte == IntPtr.Zero)
                     {
                         continue;
                     }
-                    result[dst] = 0;
-                    result[dst + 1] = 0;
-                    result[dst + 2] = 0;
-                    result[dst + 3] = 1;
-                    dst += 4;
-                    Marshal.Copy(IntPtr.Add(layer.pBsBuf, srcOffset), result, dst, len);
-                    dst += len;
-                    srcOffset += len;
-                }
-            }
 
-            return result;
+                    int srcOffset = 0;
+                    for (int n = 0; n < layer.iNalCount; n++)
+                    {
+                        int len = Marshal.ReadInt32(layer.pNalLengthInByte, n * sizeof(int));
+                        if (len <= 0)
+                        {
+                            continue;
+                        }
+
+                        IntPtr nal = IntPtr.Add(layer.pBsBuf, srcOffset);
+
+                        // 检测该 NAL 是否已带 Annex-B 起始码；没有则补上。
+                        bool hasStartCode = len >= 4
+                            && Marshal.ReadByte(nal, 0) == 0x00
+                            && Marshal.ReadByte(nal, 1) == 0x00
+                            && Marshal.ReadByte(nal, 2) == 0x00
+                            && Marshal.ReadByte(nal, 3) == 0x01;
+                        if (!hasStartCode)
+                        {
+                            ms.Write(AnnexBStartCode, 0, AnnexBStartCode.Length);
+                        }
+
+                        var tmp = new byte[len];
+                        Marshal.Copy(nal, tmp, 0, len);
+                        ms.Write(tmp, 0, len);
+
+                        srcOffset += len;
+                    }
+                }
+
+                return ms.Length > 0 ? ms.ToArray() : null;
+            }
         }
 
         /// <summary>创建编码器并解析 vtable。</summary>
@@ -358,9 +353,13 @@ namespace YeyouPlusPlus.PhoneBox
                 param.iTemporalLayerNum = 1;
                 param.iSpatialLayerNum = 1;
                 param.iComplexityMode = LowComplexity;
-                param.uiIntraPeriod = 60;           // GOP ≈ 60
+                param.uiIntraPeriod = 30;           // 1 秒一个 IDR（30fps），手机丢包后快速恢复
                 param.iNumRefFrame = 1;             // 单参考帧，低延迟
                 param.bEnableFrameSkip = true;      // 码率过高时允许丢帧
+
+                // 关键：INCREASING_ID 让 SPS/PPS 在每个 IDR 重发，UDP 丢包后手机也能恢复解码。
+                // （CONSTANT_ID 只在首帧发一次 SPS/PPS，一旦首包丢失，手机将一直黑屏。）
+                param.eSpsPpsIdStrategy = SpsPpsIncreasingId;
 
                 var layer = param.sSpatialLayers[0];
                 layer.iVideoWidth = width;
@@ -685,10 +684,6 @@ namespace YeyouPlusPlus.PhoneBox
             [MarshalAs(UnmanagedType.I1)] public bool bIsLosslessLink;
             [MarshalAs(UnmanagedType.I1)] public bool bFixRCOverShoot;
             public int iIdrBitrateRatio;
-
-            [MarshalAs(UnmanagedType.I1)] public bool bPsnrY;
-            [MarshalAs(UnmanagedType.I1)] public bool bPsnrU;
-            [MarshalAs(UnmanagedType.I1)] public bool bPsnrV;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -702,9 +697,6 @@ namespace YeyouPlusPlus.PhoneBox
             public int iPicWidth;
             public int iPicHeight;
             public long uiTimeStamp;
-            [MarshalAs(UnmanagedType.I1)] public bool bPsnrY;
-            [MarshalAs(UnmanagedType.I1)] public bool bPsnrU;
-            [MarshalAs(UnmanagedType.I1)] public bool bPsnrV;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -719,8 +711,6 @@ namespace YeyouPlusPlus.PhoneBox
             public int iNalCount;
             public IntPtr pNalLengthInByte;
             public IntPtr pBsBuf;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
-            public float[] rPsnr;
         }
 
         [StructLayout(LayoutKind.Sequential)]
