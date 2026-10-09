@@ -19,6 +19,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import com.easytier.jni.EasyTierVpnService
 import java.io.File
 
 /**
@@ -70,6 +71,9 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private var keySender: KeyEventSender? = null
     private var decoder: VideoDecoder? = null
     private var udpReceiver: UdpStreamReceiver? = null
+
+    /** 待连接的跨网络目标（VPN 隧道建立后再连电脑虚拟 IP）。 */
+    private var pendingRemoteInfo: JoinCodeDecoder.JoinInfo? = null
 
     /** 编辑面板当前选中的按键。 */
     private var selectedButton: GamepadButton? = null
@@ -329,6 +333,16 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         // 断开旧会话再建立新会话。
         resetSession()
 
+        if (info.isRemote) {
+            // 跨网络联机：先组网 + 建立 VPN，再连电脑虚拟 IP。
+            startRemoteJoin(info)
+        } else {
+            connectTo(info)
+        }
+    }
+
+    /** 建立到电脑的 TCP 控制通道（局域网直连，或跨网络组网完成后连虚拟 IP）。 */
+    private fun connectTo(info: JoinCodeDecoder.JoinInfo) {
         val ctrl = ControlChannel(info.ip, info.port, info.token)
         ctrl.listener = object : ControlChannel.Listener {
             override fun onConfig(config: ControlChannel.StreamConfig) {
@@ -360,6 +374,38 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         channel = ctrl
         keySender = KeyEventSender(ctrl)
         ctrl.connect()
+    }
+
+    /** 跨网络联机：后台组网 → 查询虚拟 IP → 请求 VPN 授权，VPN 就绪后自动连接。 */
+    private fun startRemoteJoin(info: JoinCodeDecoder.JoinInfo) {
+        EasyTierVpnService.onReady = {
+            runOnUiThread {
+                val pending = pendingRemoteInfo
+                if (pending != null) {
+                    pendingRemoteInfo = null
+                    connectTo(pending)
+                }
+            }
+        }
+
+        Thread {
+            val ok = EasyTierBridge.start(info.networkName!!, info.networkSecret!!)
+            if (!ok) {
+                runOnUiThread { showError(getString(R.string.status_error, "组网启动失败")) }
+                return@Thread
+            }
+
+            val selfIp = EasyTierBridge.queryVirtualIp()
+            if (selfIp == null) {
+                runOnUiThread { showError(getString(R.string.status_error, "获取虚拟 IP 超时")) }
+                return@Thread
+            }
+
+            runOnUiThread {
+                pendingRemoteInfo = info
+                EasyTierBridge.startVpn(this@MainActivity, selfIp, info.ip)
+            }
+        }.start()
     }
 
     private fun showGamePage() {
@@ -603,6 +649,8 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     override fun onDestroy() {
         super.onDestroy()
+        EasyTierVpnService.onReady = null
         resetSession()
+        EasyTierBridge.stop(this)
     }
 }
