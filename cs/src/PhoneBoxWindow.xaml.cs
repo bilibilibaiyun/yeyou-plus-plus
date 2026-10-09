@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Net;
+using System.Threading.Tasks;
 using System.Windows;
 using YeyouPlusPlus.PhoneBox;
 
@@ -15,6 +16,7 @@ namespace YeyouPlusPlus
         private readonly JoinCodeGenerator joinCode = new JoinCodeGenerator();
         private readonly PhoneBoxServer server;
         private readonly IntPtr captureWindow;
+        private readonly EasyTierManager easyTier = new EasyTierManager();
 
         private StreamingService streaming;
         private bool serverStarted;
@@ -46,6 +48,41 @@ namespace YeyouPlusPlus
             UpdateStatus("联机码已生成，等待手机连接。");
         }
 
+        /// <summary>开启跨网络联机：启动 EasyTier 组网（需管理员权限），生成跨网络联机码。</summary>
+        private async void RemoteButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!easyTier.IsAvailable)
+            {
+                UpdateStatus("跨网络组件缺失，无法使用。");
+                return;
+            }
+
+            try
+            {
+                UpdateStatus("正在启动跨网络组网（首次会弹出管理员授权）...");
+                JoinCodeGenerator.GenerateNetworkCredentials(out string name, out string secret);
+                await Task.Run(() => easyTier.Start(name, secret));
+
+                UpdateStatus("正在获取虚拟网络地址...");
+                string ip = await Task.Run(() => easyTier.QueryVirtualIp(25));
+                if (string.IsNullOrEmpty(ip))
+                {
+                    UpdateStatus("跨网络组网失败：未能获取虚拟 IP（可能需要管理员权限）。");
+                    return;
+                }
+
+                string code = joinCode.GenerateRemoteJoinCode(ip, name, secret);
+                JoinCodeText.Text = code;
+                AddressText.Text = "虚拟 " + ip + ":" + joinCode.CurrentPort;
+                UpdateStatus("跨网络联机码已生成，手机在外网也可连接。");
+            }
+            catch (Exception ex)
+            {
+                PhoneBoxLog.Error("跨网络组网失败：" + ex);
+                UpdateStatus("跨网络组网失败：" + ex.Message);
+            }
+        }
+
         private void StartButton_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -66,6 +103,7 @@ namespace YeyouPlusPlus
         {
             StopStreaming();
             server.Stop();
+            easyTier.Stop();
             serverStarted = false;
             UpdateStatus("已停止。");
             UpdateUiState();
@@ -113,6 +151,7 @@ namespace YeyouPlusPlus
         {
             _shuttingDown = true;
             StopStreaming();
+            easyTier.Stop();
             server.Dispose();
             Close();
         }

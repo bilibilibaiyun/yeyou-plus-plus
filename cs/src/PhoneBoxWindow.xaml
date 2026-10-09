@@ -66,6 +66,8 @@
         <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
             <Button x:Name="GenerateCodeButton" Content="生成联机码" Height="34" Padding="16,0"
                     Margin="0,0,8,0" Click="GenerateCodeButton_Click"/>
+            <Button x:Name="RemoteButton" Content="跨网络联机" Height="34" Padding="16,0"
+                    Margin="0,0,8,0" Click="RemoteButton_Click"/>
             <Button x:Name="StartButton" Style="{StaticResource PrimaryButton}" Content="开始推流"
                     Height="34" Padding="16,0" Margin="0,0,8,0" Click="StartButton_Click"/>
             <Button x:Name="StopButton" Content="停止推流" Height="34" Padding="16,0"

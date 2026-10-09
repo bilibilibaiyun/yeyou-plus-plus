@@ -18,9 +18,9 @@
     <StartupObject>YeyouPlusPlus.Program</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Version>2.3.8</Version>
-    <AssemblyVersion>2.3.8.0</AssemblyVersion>
-    <FileVersion>2.3.8.0</FileVersion>
+    <Version>2.3.9</Version>
+    <AssemblyVersion>2.3.9.0</AssemblyVersion>
+    <FileVersion>2.3.9.0</FileVersion>
     <ApplicationIcon>..\..\assets\icon\app.ico</ApplicationIcon>
   </PropertyGroup>
 
@@ -29,6 +29,8 @@
     <None Include="..\..\assets\video\intro.mp4" Link="Assets\video\intro.mp4" CopyToOutputDirectory="PreserveNewest"/>
     <!-- OpenH264 软编码 native 库（Cisco 官方预编译 win64，BSD 许可）。 -->
     <None Include="native\openh264.dll" Link="openh264.dll" CopyToOutputDirectory="PreserveNewest"/>
+    <!-- EasyTier 跨网络组网运行时（AGPL-3.0，见 THIRD_PARTY_NOTICES）。 -->
+    <None Include="..\..\engine\easytier\**\*" Link="easytier\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>
 
   <ItemGroup>

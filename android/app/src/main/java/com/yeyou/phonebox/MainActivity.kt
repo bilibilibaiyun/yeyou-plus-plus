@@ -449,7 +449,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         udpReceiver = receiver
 
         channel?.sendReady()
-        setStatus(R.string.status_streaming)
+        setStatusTransient(R.string.status_streaming)
     }
 
     private fun stopStreaming() {
@@ -581,6 +581,13 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     private fun setStatus(resId: Int) {
         statusText.text = getString(resId)
+        statusText.visibility = View.VISIBLE
+    }
+
+    /** 显示临时状态，几秒后自动隐藏（用于「正在投屏」等一闪而过的提示）。 */
+    private fun setStatusTransient(resId: Int) {
+        setStatus(resId)
+        statusText.postDelayed({ statusText.visibility = View.GONE }, 3000)
     }
 
     override fun onBackPressed() {

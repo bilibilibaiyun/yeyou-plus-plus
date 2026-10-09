@@ -25,18 +25,25 @@ object JoinCodeDecoder {
 
     private const val CIPHER_LENGTH = 16
     private const val PLAINTEXT_LENGTH = 12
+    private const val REMOTE_CIPHER_LENGTH = 32
+    private const val REMOTE_PLAINTEXT_LENGTH = 26
 
-    /** 解码结果：电脑端 IPv4、TCP 端口、6 位鉴权口令。 */
+    /** 解码结果：电脑端 IPv4、TCP 端口、鉴权口令；跨网络码附带网络名/密钥。 */
     data class JoinInfo(
         val ip: String,
         val port: Int,
-        val token: String
-    )
+        val token: String,
+        val networkName: String?,
+        val networkSecret: String?
+    ) {
+        /** 是否为跨网络联机码。 */
+        val isRemote: Boolean get() = networkName != null
+    }
 
     /**
-     * 解码联机码。
+     * 解码联机码（自动区分局域网码与跨网络码）。
      *
-     * @return 解码成功返回 [JoinInfo]，失败（输入为空、含非法字符、解密失败等）返回 null。
+     * @return 解码成功返回 [JoinInfo]，失败返回 null。
      */
     fun decode(code: String?): JoinInfo? {
         if (code.isNullOrBlank()) {
@@ -44,20 +51,32 @@ object JoinCodeDecoder {
         }
 
         return try {
-            val cipher = base62Decode(code.trim()) ?: return null
-            val plaintext = aesDecrypt(cipher) ?: return null
-            parsePlaintext(plaintext)
+            val trimmed = code.trim()
+            // 根据联机码长度预判密文长度：局域网约 22 字符→16 字节；跨网络约 43 字符→32 字节。
+            val targetCipherLen = if (trimmed.length <= 30) CIPHER_LENGTH else REMOTE_CIPHER_LENGTH
+            val cipher = base62Decode(trimmed, targetCipherLen) ?: return null
+            when (cipher.size) {
+                CIPHER_LENGTH -> {
+                    val plaintext = aesDecrypt(cipher, PLAINTEXT_LENGTH) ?: return null
+                    parseLanPlaintext(plaintext)
+                }
+                REMOTE_CIPHER_LENGTH -> {
+                    val plaintext = aesDecrypt(cipher, REMOTE_PLAINTEXT_LENGTH) ?: return null
+                    parseRemotePlaintext(plaintext)
+                }
+                else -> null
+            }
         } catch (e: Exception) {
             null
         }
     }
 
     /**
-     * Base62 解码为 16 字节密文。
-     * 先按「value = value * 62 + digit」累加出大整数，再转成固定 16 字节大端表示，
+     * Base62 解码为指定长度的大端字节数组。
+     * 先按「value = value * 62 + digit」累加出大整数，再转成固定长度的大端表示，
      * 语义等价于电脑端 `JoinCodeGenerator.Base62Decode`。
      */
-    private fun base62Decode(code: String): ByteArray? {
+    private fun base62Decode(code: String, length: Int): ByteArray? {
         if (code.isEmpty()) {
             return null
         }
@@ -72,7 +91,7 @@ object JoinCodeDecoder {
             value = value.multiply(base).add(BigInteger.valueOf(idx.toLong()))
         }
 
-        return toFixedBigEndian(value, CIPHER_LENGTH)
+        return toFixedBigEndian(value, length)
     }
 
     /**
@@ -101,16 +120,12 @@ object JoinCodeDecoder {
         return out
     }
 
-    /** AES-128-ECB/PKCS7 解密，返回 12 字节明文。 */
-    private fun aesDecrypt(cipher: ByteArray): ByteArray? {
-        if (cipher.size != CIPHER_LENGTH) {
-            return null
-        }
-
+    /** AES-128-ECB/PKCS7 解密，返回指定长度的明文。 */
+    private fun aesDecrypt(cipher: ByteArray, expectedPlaintextLength: Int): ByteArray? {
         val cipherObj = Cipher.getInstance("AES/ECB/PKCS5Padding")
         cipherObj.init(Cipher.DECRYPT_MODE, SecretKeySpec(deriveKey(), "AES"))
         val plaintext = cipherObj.doFinal(cipher)
-        return if (plaintext.size == PLAINTEXT_LENGTH) plaintext else null
+        return if (plaintext.size == expectedPlaintextLength) plaintext else null
     }
 
     /** 固定密钥：SHA256(种子字符串) 前 16 字节。 */
@@ -119,8 +134,8 @@ object JoinCodeDecoder {
         return digest.digest(KEY_SEED.toByteArray(Charsets.UTF_8)).copyOf(16)
     }
 
-    /** 解析明文：[IPv4 4字节][端口 2字节大端][6位 ASCII 口令]。 */
-    private fun parsePlaintext(p: ByteArray): JoinInfo {
+    /** 解析局域网明文：[IPv4 4字节][端口 2字节大端][6位 ASCII 口令]。 */
+    private fun parseLanPlaintext(p: ByteArray): JoinInfo {
         val ip = buildString {
             append(p[0].toInt() and 0xFF).append('.')
             append(p[1].toInt() and 0xFF).append('.')
@@ -129,6 +144,26 @@ object JoinCodeDecoder {
         }
         val port = ((p[4].toInt() and 0xFF) shl 8) or (p[5].toInt() and 0xFF)
         val token = String(p, 6, 6, Charsets.US_ASCII)
-        return JoinInfo(ip = ip, port = port, token = token)
+        return JoinInfo(ip = ip, port = port, token = token, networkName = null, networkSecret = null)
+    }
+
+    /** 解析跨网络明文：[虚拟IPv4 4字节][端口 2字节][网络名 12字节][密钥 8字节]。 */
+    private fun parseRemotePlaintext(p: ByteArray): JoinInfo {
+        val ip = buildString {
+            append(p[0].toInt() and 0xFF).append('.')
+            append(p[1].toInt() and 0xFF).append('.')
+            append(p[2].toInt() and 0xFF).append('.')
+            append(p[3].toInt() and 0xFF)
+        }
+        val port = ((p[4].toInt() and 0xFF) shl 8) or (p[5].toInt() and 0xFF)
+        val networkName = String(p, 6, 12, Charsets.US_ASCII).trim()
+        val networkSecret = String(p, 18, 8, Charsets.US_ASCII).trim()
+        return JoinInfo(
+            ip = ip,
+            port = port,
+            token = networkSecret,
+            networkName = networkName,
+            networkSecret = networkSecret
+        )
     }
 }

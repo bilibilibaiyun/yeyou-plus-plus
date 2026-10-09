@@ -33,6 +33,9 @@ namespace YeyouPlusPlus.PhoneBox
         private string currentToken;
         private string currentIp;
         private int currentPort;
+        private string currentNetworkName;
+        private string currentNetworkSecret;
+        private string currentVirtualIp;
 
         /// <summary>当前会话口令（手机连接时需在 HelloMessage.Token 中携带）。</summary>
         public string CurrentToken
@@ -50,6 +53,24 @@ namespace YeyouPlusPlus.PhoneBox
         public int CurrentPort
         {
             get { return currentPort; }
+        }
+
+        /// <summary>跨网络会话的网络名（EasyTier 组网标识）。</summary>
+        public string CurrentNetworkName
+        {
+            get { return currentNetworkName; }
+        }
+
+        /// <summary>跨网络会话的网络密钥。</summary>
+        public string CurrentNetworkSecret
+        {
+            get { return currentNetworkSecret; }
+        }
+
+        /// <summary>跨网络会话的虚拟 IP。</summary>
+        public string CurrentVirtualIp
+        {
+            get { return currentVirtualIp; }
         }
 
         /// <summary>生成本次会话的联机码，并保存口令 / IP / 端口供后续校验。</summary>
@@ -73,6 +94,43 @@ namespace YeyouPlusPlus.PhoneBox
 
             byte[] cipher = AesEncrypt(plaintext);
             return Base62Encode(cipher);
+        }
+
+        /// <summary>
+        /// 生成跨网络联机码（EasyTier 组网后使用）。
+        /// 明文：虚拟 IPv4(4) + TCP 端口(2) + 网络名(12) + 网络密钥(8) = 26 字节 → AES 32 字节。
+        /// 手机端解码后，用网络名/密钥加入同一虚拟网络，再以虚拟 IP 直连。
+        /// </summary>
+        public string GenerateRemoteJoinCode(string virtualIp, string networkName, string networkSecret)
+        {
+            int port = PhoneBoxConfigStore.Current.TcpPort;
+
+            currentIp = virtualIp;
+            currentPort = port;
+            currentToken = networkSecret;
+            currentNetworkName = networkName;
+            currentNetworkSecret = networkSecret;
+            currentVirtualIp = virtualIp;
+
+            byte[] ipBytes = IPAddress.Parse(virtualIp).GetAddressBytes();
+            var plaintext = new byte[26];
+            Array.Copy(ipBytes, 0, plaintext, 0, 4);
+            plaintext[4] = (byte)(port >> 8);
+            plaintext[5] = (byte)(port & 0xFF);
+            byte[] nameBytes = Encoding.ASCII.GetBytes(networkName.PadRight(12));
+            Array.Copy(nameBytes, 0, plaintext, 6, 12);
+            byte[] secretBytes = Encoding.ASCII.GetBytes(networkSecret.PadRight(8));
+            Array.Copy(secretBytes, 0, plaintext, 18, 8);
+
+            byte[] cipher = AesEncrypt(plaintext);
+            return Base62Encode(cipher);
+        }
+
+        /// <summary>生成一组随机的 EasyTier 网络名与密钥（供组网与联机码共用）。</summary>
+        public static void GenerateNetworkCredentials(out string networkName, out string networkSecret)
+        {
+            networkName = GenerateNetworkName();
+            networkSecret = GenerateSecret();
         }
 
         /// <summary>校验手机上报的口令是否与当前会话一致。</summary>
@@ -122,6 +180,48 @@ namespace YeyouPlusPlus.PhoneBox
             }
         }
 
+        /// <summary>
+        /// 解析跨网络联机码（供桌面端验证 / 测试；真正解码逻辑在手机端）。
+        /// </summary>
+        public static bool TryDecodeRemote(
+            string code, out string ip, out int port, out string networkName, out string networkSecret)
+        {
+            ip = null;
+            port = 0;
+            networkName = null;
+            networkSecret = null;
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(code))
+                {
+                    return false;
+                }
+
+                byte[] cipher = Base62Decode(code);
+                if (cipher == null || cipher.Length != 32)
+                {
+                    return false;
+                }
+
+                byte[] plaintext = AesDecrypt(cipher);
+                if (plaintext == null || plaintext.Length < 26)
+                {
+                    return false;
+                }
+
+                ip = new IPAddress(new[] { plaintext[0], plaintext[1], plaintext[2], plaintext[3] }).ToString();
+                port = (plaintext[4] << 8) | plaintext[5];
+                networkName = Encoding.ASCII.GetString(plaintext, 6, 12).Trim();
+                networkSecret = Encoding.ASCII.GetString(plaintext, 18, 8).Trim();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private static byte[] DeriveKey()
         {
             using (var sha = SHA256.Create())
@@ -141,6 +241,34 @@ namespace YeyouPlusPlus.PhoneBox
                 rng.GetBytes(bytes);
                 int value = BitConverter.ToInt32(bytes, 0) & 0x7FFFFFFF;
                 return (value % 1000000).ToString("D6");
+            }
+        }
+
+        /// <summary>生成随机的 EasyTier 网络名（固定前缀 + 随机，保证不与其它网络冲突）。</summary>
+        private static string GenerateNetworkName()
+        {
+            return "yypp" + GenerateRandomString(8);
+        }
+
+        /// <summary>生成随机的 EasyTier 网络密钥。</summary>
+        private static string GenerateSecret()
+        {
+            return GenerateRandomString(8);
+        }
+
+        /// <summary>生成指定长度的随机 Base62 字符串。</summary>
+        private static string GenerateRandomString(int length)
+        {
+            using (var rng = RandomNumberGenerator.Create())
+            {
+                var bytes = new byte[length];
+                rng.GetBytes(bytes);
+                var chars = new char[length];
+                for (int i = 0; i < length; i++)
+                {
+                    chars[i] = Base62Alphabet[bytes[i] % 62];
+                }
+                return new string(chars);
             }
         }
 
