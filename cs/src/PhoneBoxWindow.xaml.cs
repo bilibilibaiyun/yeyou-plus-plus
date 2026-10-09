@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Net;
 using System.Windows;
 using YeyouPlusPlus.PhoneBox;
@@ -17,6 +18,9 @@ namespace YeyouPlusPlus
 
         private StreamingService streaming;
         private bool serverStarted;
+
+        /// <summary>是否正在执行真正的关闭（Shutdown 路径）；否则点 X / 关闭按钮仅隐藏窗口。</summary>
+        private bool _shuttingDown;
 
         public PhoneBoxWindow(IntPtr captureWindow)
         {
@@ -86,6 +90,30 @@ namespace YeyouPlusPlus
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)
         {
+            // 只隐藏窗口，推流继续；真正的清理在 Shutdown() 中完成。
+            Hide();
+        }
+
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            // 点 X / 关闭按钮只是隐藏窗口（推流不中断）；只有 Shutdown() 才真正关闭。
+            if (!_shuttingDown)
+            {
+                e.Cancel = true;
+                Hide();
+                return;
+            }
+            base.OnClosing(e);
+        }
+
+        /// <summary>
+        /// 真正关闭窗口并释放推流 / 服务资源（供主窗口退出时调用）。
+        /// </summary>
+        public void Shutdown()
+        {
+            _shuttingDown = true;
+            StopStreaming();
+            server.Dispose();
             Close();
         }
 

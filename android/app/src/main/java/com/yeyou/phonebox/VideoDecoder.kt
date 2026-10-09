@@ -55,14 +55,15 @@ class VideoDecoder(private val surface: Surface) {
     }
 
     /**
-     * 喂入一个 Annex-B NAL（含起始码）。
-     * 由 UDP 接收线程调用，内部同时完成输入入队与输出上屏，保持低延迟。
+     * 喂入一帧完整 H.264 数据（一个 access unit，含 SPS/PPS/IDR 等多个 Annex-B NAL，
+     * 每个 NAL 带 00 00 00 01 起始码）。由 UDP 接收线程调用，一次性把整帧塞进一个
+     * input buffer，内部同时完成输入入队与输出上屏，保持低延迟。
      *
      * 重要：用短超时重试等待输入缓冲，避免在缓冲暂不可用时把 SPS/PPS 这类
      * 关键 NAL 直接丢弃（否则首帧无法解码 → 黑屏）。仅重试若干次后仍无缓冲才放弃，
      * 以防 UDP 线程被无限阻塞。
      */
-    fun feed(annexBNalu: ByteArray) {
+    fun feed(frame: ByteArray) {
         val decoder = codec ?: return
         if (!started) {
             return
@@ -80,11 +81,11 @@ class VideoDecoder(private val surface: Surface) {
 
             if (inIndex >= 0) {
                 val inputBuffer = decoder.getInputBuffer(inIndex)
-                if (inputBuffer != null && annexBNalu.size <= inputBuffer.capacity()) {
+                if (inputBuffer != null && frame.size <= inputBuffer.capacity()) {
                     inputBuffer.clear()
-                    inputBuffer.put(annexBNalu)
+                    inputBuffer.put(frame)
                     // PTS 统一为 0：直播投屏以「尽快上屏」为目标，不做回放时戳校准。
-                    decoder.queueInputBuffer(inIndex, 0, annexBNalu.size, 0L, 0)
+                    decoder.queueInputBuffer(inIndex, 0, frame.size, 0L, 0)
                 }
             }
             drain(decoder)

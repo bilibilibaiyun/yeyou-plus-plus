@@ -65,9 +65,9 @@ class UdpStreamReceiver(
                     packet.length = buffer.size
                     s.receive(packet)
 
-                    val nalu = depacketizer.process(packet.data, packet.offset, packet.length)
-                    if (nalu != null) {
-                        decoder.feed(nalu)
+                    val frame = depacketizer.process(packet.data, packet.offset, packet.length)
+                    if (frame != null) {
+                        decoder.feed(frame)
                     }
                 } catch (e: Exception) {
                     if (running.get()) {

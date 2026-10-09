@@ -30,13 +30,20 @@ class RtpDepacketizer {
 
     private var fuActive = false
 
+    /** 帧重组缓冲：把本帧所有 NAL 以 Annex-B 形式累积，M=1 时整帧返回。 */
+    private val frameBuffer = ByteArrayOutputStream()
+
     /**
-     * 处理一个 RTP 包。
+     * 处理一个 RTP 包，并按「帧」重组。
+     *
+     * M 位（RTP 头第 2 字节 bit7）标记本帧的最后一个 RTP 包：
+     *   - M=0：把包内的 NAL（单包 / FU-A 重组完成）追加进帧缓冲，返回 null；
+     *   - M=1：追加后返回整帧 Annex-B 字节流（含起始码），并清空帧缓冲。
      *
      * @param packet 完整 UDP 报文字节
      * @param offset 有效数据起始偏移
      * @param length 有效数据长度
-     * @return 组装完成的单个 Annex-B NAL（含起始码）；尚未完成或无效包返回 null
+     * @return 组装完成的完整帧（access unit）；尚未完成或无效包返回 null
      */
     fun process(packet: ByteArray, offset: Int, length: Int): ByteArray? {
         if (packet.size < offset + length || length < RTP_HEADER_SIZE) {
@@ -49,7 +56,11 @@ class RtpDepacketizer {
         if (version != 2) {
             return null
         }
-        val payloadType = packet[offset + 1].toInt() and 0x7F
+
+        // M 位位于 RTP 头第 2 字节（byte1）的 bit7；PT 为其低 7 位。
+        val second = packet[offset + 1].toInt() and 0xFF
+        val marker = (second and 0x80) != 0
+        val payloadType = second and 0x7F
         if (payloadType != H264_PAYLOAD_TYPE) {
             return null
         }
@@ -63,12 +74,27 @@ class RtpDepacketizer {
         val nalHeader = packet[payloadOffset].toInt() and 0xFF
         val nalType = nalHeader and 0x1F
 
-        return when (nalType) {
-            in 1..23 -> buildSingleNalu(packet, payloadOffset, payloadLen)
-            FU_A_TYPE -> processFuA(packet, payloadOffset, payloadLen)
-            // 电脑端不使用 STAP-A（24）等聚合包；收到未知类型直接忽略。
-            else -> null
+        when (nalType) {
+            in 1..23 -> frameBuffer.write(buildSingleNalu(packet, payloadOffset, payloadLen))
+            FU_A_TYPE -> {
+                val nalu = processFuA(packet, payloadOffset, payloadLen)
+                if (nalu != null) {
+                    frameBuffer.write(nalu)
+                }
+            }
+            // 电脑端不使用 STAP-A（24）等聚合包；收到未知类型直接忽略，不破坏帧缓冲。
+            else -> Unit
         }
+
+        if (marker) {
+            if (frameBuffer.size() > 0) {
+                val frame = frameBuffer.toByteArray()
+                frameBuffer.reset()
+                return frame
+            }
+            return null
+        }
+        return null
     }
 
     /** 单 NALU：起始码 + 完整 NALU。 */
@@ -124,9 +150,10 @@ class RtpDepacketizer {
         return null
     }
 
-    /** 丢弃未完成的分片（重连 / 停止时调用）。 */
+    /** 丢弃未完成的分片与帧缓冲（重连 / 停止时调用）。 */
     fun reset() {
         fuBuffer.reset()
         fuActive = false
+        frameBuffer.reset()
     }
 }

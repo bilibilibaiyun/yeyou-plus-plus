@@ -47,6 +47,9 @@ namespace YeyouPlusPlus
         private double pendingZoomPercent = 100;
         private bool shadowSidebarExpanded;
 
+        /// <summary>手机盒子联机窗口实例（隐藏后复用，推流不中断）。</summary>
+        private PhoneBoxWindow phoneBoxWindow;
+
         // ===== 视频背景主题（隐藏彩蛋：主页连点 5 次切换） =====
         private int homeClickCount;
         private DateTime lastHomeClick = DateTime.MinValue;
@@ -871,12 +874,21 @@ namespace YeyouPlusPlus
         /// </summary>
         private void PhoneBoxButton_Click(object sender, RoutedEventArgs e)
         {
+            // 复用已创建的窗口实例：隐藏后再次点击仅重新显示，推流保持不中断。
+            if (phoneBoxWindow != null)
+            {
+                phoneBoxWindow.Show();
+                phoneBoxWindow.Activate();
+                return;
+            }
+
             IntPtr handle = CurrentHost != null ? CurrentHost.Handle : IntPtr.Zero;
-            var window = new PhoneBoxWindow(handle)
+            phoneBoxWindow = new PhoneBoxWindow(handle)
             {
                 Owner = this
             };
-            window.Show();
+            phoneBoxWindow.Closed += (s, ev) => phoneBoxWindow = null;
+            phoneBoxWindow.Show();
         }
 
         // ================= 快捷入口 =================
@@ -1634,6 +1646,9 @@ namespace YeyouPlusPlus
 
         protected override void OnClosed(EventArgs e)
         {
+            // 退出软件时确保手机盒子真正停止（关闭窗口、停止推流并释放资源）。
+            phoneBoxWindow?.Shutdown();
+
             QuickLinks.IconUpdated -= OnQuickLinkIconUpdated;
             speedTimer?.Stop();
             cacheTimer?.Stop();
