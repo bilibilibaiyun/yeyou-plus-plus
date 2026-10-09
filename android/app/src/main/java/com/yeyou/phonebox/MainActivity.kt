@@ -3,10 +3,12 @@ package com.yeyou.phonebox
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.Gravity
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -78,6 +80,9 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // 投屏期间保持屏幕常亮，避免手机自动锁屏导致连接中断。
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         homePage = findViewById(R.id.home_page)
         gamePage = findViewById(R.id.game_page)
@@ -331,6 +336,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                     this@MainActivity.config = config
                     showGamePage()
                     tryStartStreaming()
+                    adjustSurfaceAspect(config.width, config.height)
                 }
             }
 
@@ -359,6 +365,43 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private fun showGamePage() {
         homePage.visibility = View.GONE
         gamePage.visibility = View.VISIBLE
+    }
+
+    /**
+     * 按视频宽高比调整 SurfaceView 尺寸，居中显示（四周留黑边），
+     * 避免 MediaCodec 把视频强制拉伸填满整个屏幕导致画面变形。
+     */
+    private fun adjustSurfaceAspect(videoW: Int, videoH: Int) {
+        if (videoW <= 0 || videoH <= 0) {
+            return
+        }
+        gamePage.post {
+            val screenW = gamePage.width
+            val screenH = gamePage.height
+            if (screenW <= 0 || screenH <= 0) {
+                return@post
+            }
+            val videoRatio = videoW.toFloat() / videoH
+            val screenRatio = screenW.toFloat() / screenH
+
+            val targetW: Int
+            val targetH: Int
+            if (videoRatio > screenRatio) {
+                // 视频比屏幕更「扁」：以屏宽为准，按比例收窄高度
+                targetW = screenW
+                targetH = (screenW / videoRatio).toInt()
+            } else {
+                // 视频比屏幕更「高」：以屏高为准，按比例收窄宽度
+                targetH = screenH
+                targetW = (screenH * videoRatio).toInt()
+            }
+
+            val lp = surfaceView.layoutParams as FrameLayout.LayoutParams
+            lp.width = targetW
+            lp.height = targetH
+            lp.gravity = Gravity.CENTER
+            surfaceView.layoutParams = lp
+        }
     }
 
     private fun showHomePage() {

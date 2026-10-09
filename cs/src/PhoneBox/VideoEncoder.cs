@@ -160,12 +160,20 @@ namespace YeyouPlusPlus.PhoneBox
 
                 if (frame.Width != width || frame.Height != height)
                 {
-                    // 输入尺寸不匹配时按编码器尺寸缩放，保证 I420 平面与编码器一致。
+                    // 输入尺寸不匹配时，按「保持宽高比」缩放到编码器尺寸，四周补黑边，
+                    // 避免直接拉伸导致画面变形（抓屏窗口比例与编码分辨率不一致时）。
                     using (var scaled = new Bitmap(width, height, PixelFormat.Format24bppRgb))
                     {
                         using (var g = Graphics.FromImage(scaled))
                         {
-                            g.DrawImage(frame, 0, 0, width, height);
+                            g.Clear(Color.Black);
+                            double scale = Math.Min((double)width / frame.Width, (double)height / frame.Height);
+                            int dw = Math.Max(1, (int)Math.Round(frame.Width * scale));
+                            int dh = Math.Max(1, (int)Math.Round(frame.Height * scale));
+                            int dx = (width - dw) / 2;
+                            int dy = (height - dh) / 2;
+                            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                            g.DrawImage(frame, dx, dy, dw, dh);
                         }
                         return EncodeCore(scaled);
                     }
