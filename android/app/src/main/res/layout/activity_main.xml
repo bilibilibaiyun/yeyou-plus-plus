@@ -5,81 +5,87 @@
     android:background="@android:color/black">
 
     <!-- ============ 主页：联机码输入 ============ -->
-    <LinearLayout
+    <ScrollView
         android:id="@+id/home_page"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:padding="32dp">
+        android:fillViewport="true">
 
-        <TextView
-            android:id="@+id/home_title"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/app_name"
-            android:textColor="#FFFFFF"
-            android:textSize="26sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/home_subtitle"
-            android:textColor="#99FFFFFF"
-            android:textSize="13sp"
-            android:layout_marginBottom="32dp" />
-
-        <EditText
-            android:id="@+id/join_code_input"
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:maxWidth="420dp"
-            android:layout_gravity="center_horizontal"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
             android:gravity="center"
-            android:hint="@string/join_code_hint"
-            android:textColor="#FFFFFF"
-            android:textColorHint="#66FFFFFF"
-            android:textSize="18sp"
-            android:inputType="textVisiblePassword"
-            android:singleLine="true"
-            android:background="@drawable/bg_join_input" />
+            android:padding="16dp">
 
-        <Button
-            android:id="@+id/connect_button"
-            android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:maxWidth="420dp"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="16dp"
-            android:text="@string/connect"
-            android:textSize="17sp"
-            android:textColor="#FFFFFF"
-            android:background="@drawable/bg_connect_button" />
+            <TextView
+                android:id="@+id/home_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/app_name"
+                android:textColor="#FFFFFF"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="6dp" />
 
-        <TextView
-            android:id="@+id/home_poem"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="40dp"
-            android:text="@string/home_poem"
-            android:textColor="#66FFFFFF"
-            android:textSize="14sp" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/home_subtitle"
+                android:textColor="#99FFFFFF"
+                android:textSize="12sp"
+                android:layout_marginBottom="16dp" />
 
-        <Button
-            android:id="@+id/home_settings_button"
-            android:layout_width="wrap_content"
-            android:layout_height="40dp"
-            android:layout_marginTop="24dp"
-            android:minWidth="0dp"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
-            android:text="@string/settings"
-            android:textSize="13sp"
-            android:textColor="#99FFFFFF"
-            android:background="@drawable/bg_join_input" />
-    </LinearLayout>
+            <EditText
+                android:id="@+id/join_code_input"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:maxWidth="420dp"
+                android:layout_gravity="center_horizontal"
+                android:gravity="center"
+                android:hint="@string/join_code_hint"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#66FFFFFF"
+                android:textSize="16sp"
+                android:inputType="textVisiblePassword"
+                android:singleLine="true"
+                android:background="@drawable/bg_join_input" />
+
+            <Button
+                android:id="@+id/connect_button"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:maxWidth="420dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="12dp"
+                android:text="@string/connect"
+                android:textSize="16sp"
+                android:textColor="#FFFFFF"
+                android:background="@drawable/bg_connect_button" />
+
+            <TextView
+                android:id="@+id/home_poem"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/home_poem"
+                android:textColor="#66FFFFFF"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/home_settings_button"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:layout_marginTop="12dp"
+                android:minWidth="0dp"
+                android:paddingStart="20dp"
+                android:paddingEnd="20dp"
+                android:text="@string/settings"
+                android:textSize="13sp"
+                android:textColor="#99FFFFFF"
+                android:background="@drawable/bg_join_input" />
+        </LinearLayout>
+    </ScrollView>
 
     <!-- ============ 游戏页：投屏 + 虚拟按键 ============ -->
     <FrameLayout

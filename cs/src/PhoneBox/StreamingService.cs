@@ -165,6 +165,7 @@ namespace YeyouPlusPlus.PhoneBox
         /// </summary>
         private void CaptureLoop()
         {
+            long frameCount = 0;
             while (running)
             {
                 try
@@ -176,6 +177,15 @@ namespace YeyouPlusPlus.PhoneBox
                             Screen.PrimaryScreen.Bounds.Y,
                             Screen.PrimaryScreen.Bounds.Width,
                             Screen.PrimaryScreen.Bounds.Height);
+
+                    frameCount++;
+                    if (frameCount == 1 || frameCount % 60 == 0)
+                    {
+                        bool black = ScreenCapturer.IsLikelyBlack(frame);
+                        PhoneBoxLog.Info(
+                            "抓屏诊断：第 " + frameCount + " 帧，尺寸 " + frame.Width + "x" + frame.Height
+                            + (black ? "，【疑似全黑！】" : "，画面正常"));
+                    }
 
                     lock (frameLock)
                     {
@@ -202,6 +212,7 @@ namespace YeyouPlusPlus.PhoneBox
         /// </summary>
         private void EncodeLoop()
         {
+            long encodeCount = 0;
             while (running)
             {
                 Bitmap frame = null;
@@ -233,6 +244,12 @@ namespace YeyouPlusPlus.PhoneBox
                     if (encoded == null || encoded.Length == 0)
                     {
                         continue;
+                    }
+
+                    encodeCount++;
+                    if (encodeCount == 1 || encodeCount % 60 == 0)
+                    {
+                        PhoneBoxLog.Info("编码诊断：第 " + encodeCount + " 帧，H.264 " + encoded.Length + " 字节");
                     }
 
                     foreach (var packet in packetizer.Packetize(encoded))

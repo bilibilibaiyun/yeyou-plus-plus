@@ -167,7 +167,9 @@ namespace YeyouPlusPlus.PhoneBox
                 // 强制 GDI 批量命令落地，避免 GPU 合成内容尚未完成拷贝。
                 GdiFlush();
 
-                return CopyToOpaqueBitmap(hBitmap, width, height);
+                // 直接从 DIB section 的像素指针读 RGB（跳过 alpha 字节）构造 24bpp 位图，
+                // 避免 Image.FromHbitmap + DrawImage 在 alpha=0 时把画面画成黑色。
+                return BuildOpaqueBitmap(bits, width, height);
             }
             finally
             {
@@ -256,19 +258,89 @@ namespace YeyouPlusPlus.PhoneBox
         }
 
         /// <summary>
-        /// 把 GDI HBITMAP 复制成独立的 24bpp RGB Bitmap，丢弃 alpha 通道，
-        /// 避免 BitBlt 抓屏时 alpha 为 0 导致 PNG 全透明。
+        /// 把 32bpp BGRA DIB section 的像素数据直接转成 24bpp BGR Bitmap。
+        /// 逐像素跳过 alpha 字节，彻底规避「alpha=0 导致画面被画成黑色」的问题。
         /// </summary>
-        private static Bitmap CopyToOpaqueBitmap(IntPtr hBitmap, int width, int height)
+        private static Bitmap BuildOpaqueBitmap(IntPtr bits, int width, int height)
         {
-            using (var source = Image.FromHbitmap(hBitmap))
+            int srcStride = width * 4; // 32bpp DIB，每行无填充
+            var result = new Bitmap(width, height, PixelFormat.Format24bppRgb);
+            var rect = new Rectangle(0, 0, width, height);
+            var data = result.LockBits(rect, ImageLockMode.WriteOnly, PixelFormat.Format24bppRgb);
+            try
             {
-                var result = new Bitmap(width, height, PixelFormat.Format24bppRgb);
-                using (var g = Graphics.FromImage(result))
+                int dstStride = data.Stride;
+                var src = new byte[srcStride * height];
+                var dst = new byte[dstStride * height];
+                Marshal.Copy(bits, src, 0, src.Length);
+
+                for (int y = 0; y < height; y++)
                 {
-                    g.DrawImage(source, 0, 0, width, height);
+                    int sr = y * srcStride;
+                    int dr = y * dstStride;
+                    for (int x = 0; x < width; x++)
+                    {
+                        int si = sr + x * 4;  // B, G, R, A
+                        int di = dr + x * 3;  // B, G, R
+                        dst[di] = src[si];
+                        dst[di + 1] = src[si + 1];
+                        dst[di + 2] = src[si + 2];
+                    }
                 }
-                return result;
+
+                Marshal.Copy(dst, 0, data.Scan0, dst.Length);
+            }
+            finally
+            {
+                result.UnlockBits(data);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// 抽样检测一帧是否「接近全黑」（用于诊断抓屏是否抓到了黑屏）。
+        /// 每隔 10 像素抽样，若 99% 以上采样点为黑色（RGB&lt;16）则判定为疑似黑屏。
+        /// </summary>
+        public static bool IsLikelyBlack(Bitmap bmp)
+        {
+            if (bmp == null || bmp.Width <= 0 || bmp.Height <= 0)
+            {
+                return true;
+            }
+
+            var rect = new Rectangle(0, 0, bmp.Width, bmp.Height);
+            var data = bmp.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+            try
+            {
+                int stride = data.Stride;
+                const int bpp = 3;
+                var buffer = new byte[stride * bmp.Height];
+                Marshal.Copy(data.Scan0, buffer, 0, buffer.Length);
+
+                int black = 0;
+                int total = 0;
+                const int step = 10;
+                for (int y = 0; y < bmp.Height; y += step)
+                {
+                    int rowBase = y * stride;
+                    for (int x = 0; x < bmp.Width; x += step)
+                    {
+                        int i = rowBase + x * bpp;
+                        int b = buffer[i];
+                        int g = buffer[i + 1];
+                        int r = buffer[i + 2];
+                        if (r < 16 && g < 16 && b < 16)
+                        {
+                            black++;
+                        }
+                        total++;
+                    }
+                }
+                return total > 0 && black * 100 / total >= 99;
+            }
+            finally
+            {
+                bmp.UnlockBits(data);
             }
         }
     }

@@ -38,7 +38,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     }
 
     // 主页
-    private lateinit var homePage: LinearLayout
+    private lateinit var homePage: View
     private lateinit var joinCodeInput: EditText
     private lateinit var connectButton: Button
     private lateinit var homeSettingsButton: Button
