@@ -30,4 +30,22 @@
     <string name="edit_delete">删除</string>
     <string name="edit_reset">恢复默认</string>
     <string name="pick_key_title">选择要映射的按键</string>
+
+    <!-- 内置更新 -->
+    <string name="update_title">检查更新</string>
+    <string name="update_current">当前版本 v%1$s</string>
+    <string name="update_check">检测更新</string>
+    <string name="update_select_version">选择版本</string>
+    <string name="update_checking">正在检查更新…</string>
+    <string name="update_latest">已是最新版本</string>
+    <string name="update_found">发现新版本 %1$s，是否下载安装？</string>
+    <string name="update_download">下载更新</string>
+    <string name="update_downloading">正在下载更新…</string>
+    <string name="update_install">安装更新</string>
+    <string name="update_failed">检查更新失败：%1$s</string>
+    <string name="update_install_failed">下载失败：%1$s</string>
+    <string name="update_no_version">未找到可用版本</string>
+    <string name="update_tag_test">（测试版）</string>
+    <string name="update_tag_stable">（稳定版）</string>
+    <string name="update_current_mark"> [当前]</string>
 </resources>

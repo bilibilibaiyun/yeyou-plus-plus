@@ -1,5 +1,7 @@
 package com.yeyou.phonebox
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.Surface
 import android.view.SurfaceHolder
@@ -9,10 +11,13 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.SeekBar
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
+import java.io.File
 
 /**
  * 页游++ 手机盒子主界面。
@@ -36,6 +41,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private lateinit var homePage: LinearLayout
     private lateinit var joinCodeInput: EditText
     private lateinit var connectButton: Button
+    private lateinit var homeSettingsButton: Button
 
     // 游戏页
     private lateinit var gamePage: FrameLayout
@@ -77,6 +83,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         gamePage = findViewById(R.id.game_page)
         joinCodeInput = findViewById(R.id.join_code_input)
         connectButton = findViewById(R.id.connect_button)
+        homeSettingsButton = findViewById(R.id.home_settings_button)
         surfaceView = findViewById(R.id.surface_view)
         gamepadView = findViewById(R.id.gamepad_view)
         statusText = findViewById(R.id.status_text)
@@ -117,6 +124,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         connectButton.setOnClickListener {
             handleJoinCode(joinCodeInput.text.toString().trim())
         }
+        homeSettingsButton.setOnClickListener { showSettingsDialog() }
         settingsButton.setOnClickListener { enterEditMode() }
         editDoneButton.setOnClickListener { exitEditMode() }
         editMapKeyButton.setOnClickListener { showKeyPicker() }
@@ -147,6 +155,159 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             override fun onStartTrackingTouch(seekBar: SeekBar) {}
             override fun onStopTrackingTouch(seekBar: SeekBar) {}
         })
+    }
+
+    // ---- 设置 / 内置更新 ----
+
+    /** 弹出设置对话框：当前版本 + 检测更新 + 选择版本（与电脑端一致）。 */
+    private fun showSettingsDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.settings)
+            .setMessage(getString(R.string.update_current, BuildConfig.VERSION_NAME))
+            .setPositiveButton(R.string.update_check) { _, _ -> checkForUpdate() }
+            .setNeutralButton(R.string.update_select_version) { _, _ -> showVersionList() }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /** 后台「检测更新」：取最新版本，有更新则提示下载。 */
+    private fun checkForUpdate() {
+        val progress = showProgressDialog(R.string.update_checking)
+        Thread {
+            val result = try {
+                UpdateChecker.check(BuildConfig.VERSION_NAME)
+            } catch (e: Exception) {
+                runOnUiThread {
+                    progress.dismiss()
+                    showUpdateResult(getString(R.string.update_failed, e.message ?: "网络错误"))
+                }
+                return@Thread
+            }
+
+            runOnUiThread {
+                progress.dismiss()
+                if (result == null) {
+                    showUpdateResult(getString(R.string.update_latest))
+                } else {
+                    confirmDownload(result)
+                }
+            }
+        }.start()
+    }
+
+    /** 后台「选择版本」：拉取全部版本列表供用户选择。 */
+    private fun showVersionList() {
+        val progress = showProgressDialog(R.string.update_checking)
+        Thread {
+            val releases = try {
+                UpdateChecker.listReleases()
+            } catch (e: Exception) {
+                runOnUiThread {
+                    progress.dismiss()
+                    showUpdateResult(getString(R.string.update_failed, e.message ?: "网络错误"))
+                }
+                return@Thread
+            }
+
+            runOnUiThread {
+                progress.dismiss()
+                if (releases.isEmpty()) {
+                    showUpdateResult(getString(R.string.update_no_version))
+                    return@runOnUiThread
+                }
+
+                val current = BuildConfig.VERSION_NAME
+                val labels = releases.map { item ->
+                    val tag = if (item.prerelease) getString(R.string.update_tag_test) else getString(R.string.update_tag_stable)
+                    val mark = if (item.apkVersion == current) getString(R.string.update_current_mark) else ""
+                    "v${item.apkVersion} $tag$mark"
+                }.toTypedArray()
+
+                AlertDialog.Builder(this)
+                    .setTitle(R.string.update_select_version)
+                    .setItems(labels) { _, which -> confirmDownload(releases[which]) }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
+            }
+        }.start()
+    }
+
+    /** 显示一个不可取消的「请稍候」进度对话框。 */
+    private fun showProgressDialog(messageRes: Int): AlertDialog {
+        val dialog = AlertDialog.Builder(this)
+            .setMessage(messageRes)
+            .setCancelable(false)
+            .create()
+        dialog.show()
+        return dialog
+    }
+
+    /** 确认下载安装某个版本。 */
+    private fun confirmDownload(item: UpdateChecker.ReleaseItem) {
+        val tag = if (item.prerelease) getString(R.string.update_tag_test) else getString(R.string.update_tag_stable)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.update_title)
+            .setMessage(getString(R.string.update_found, "v${item.apkVersion} $tag"))
+            .setPositiveButton(R.string.update_download) { _, _ -> startDownload(item) }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /** 后台下载 APK 并触发安装。 */
+    private fun startDownload(item: UpdateChecker.ReleaseItem) {
+        val progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal)
+        progressBar.max = 100
+        progressBar.progress = 0
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.update_downloading)
+            .setView(progressBar)
+            .setCancelable(false)
+            .create()
+        dialog.show()
+
+        Thread {
+            val dir = File(cacheDir, "apk")
+            dir.mkdirs()
+            val apkFile = File(dir, "update.apk")
+            try {
+                UpdateChecker.download(item.downloadUrl, apkFile) { p ->
+                    runOnUiThread { progressBar.progress = p }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    dialog.dismiss()
+                    showUpdateResult(getString(R.string.update_install_failed, e.message ?: "下载失败"))
+                }
+                return@Thread
+            }
+            runOnUiThread {
+                dialog.dismiss()
+                installApk(apkFile)
+            }
+        }.start()
+    }
+
+    /** 通过 FileProvider 触发系统安装器安装 APK。 */
+    private fun installApk(file: File) {
+        val uri = FileProvider.getUriForFile(this, "com.yeyou.phonebox.fileprovider", file)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        // Android 8+ 需「安装未知来源」权限，已在 manifest 声明；
+        // 未授予时系统会引导用户去设置开启。
+        startActivity(intent)
+    }
+
+    /** 展示检查结果（已最新 / 失败 / 无版本）。 */
+    private fun showUpdateResult(message: String) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.update_title)
+            .setMessage(message)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     // ---- 主页 / 连接 ----

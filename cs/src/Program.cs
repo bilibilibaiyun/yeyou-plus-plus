@@ -97,8 +97,11 @@ namespace YeyouPlusPlus
             // 全局 CachePath 与各影子的 RequestContextSettings.CachePath 都必须是其子目录。
             settings.RootCachePath = AppPaths.ProfilesRoot;
 
-            // [诊断] YPP_DISABLE_GPU=1 时禁用 GPU（排查 GPU 合成内容不呈现问题）。
-            if (Environment.GetEnvironmentVariable("YPP_DISABLE_GPU") == "1")
+            // 手机盒子抓屏依赖 GDI BitBlt，而 GDI 无法捕获 GPU 硬件加速（DirectComposition）
+            // 合成的内容，会抓到黑屏。因此默认禁用 GPU 硬件加速，让 CEF 与 Flash 走软件渲染，
+            // 既能被 BitBlt 正常抓到，也提升老 CEF 84 + Flash 的兼容性。
+            // 若需强制启用 GPU，可设环境变量 YPP_ENABLE_GPU=1。
+            if (Environment.GetEnvironmentVariable("YPP_ENABLE_GPU") != "1")
             {
                 settings.CefCommandLineArgs["disable-gpu"] = "1";
             }

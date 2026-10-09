@@ -66,6 +66,19 @@
             android:text="@string/home_poem"
             android:textColor="#66FFFFFF"
             android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/home_settings_button"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginTop="24dp"
+            android:minWidth="0dp"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:text="@string/settings"
+            android:textSize="13sp"
+            android:textColor="#99FFFFFF"
+            android:background="@drawable/bg_join_input" />
     </LinearLayout>
 
     <!-- ============ 游戏页：投屏 + 虚拟按键 ============ -->
