@@ -98,8 +98,8 @@ namespace YeyouPlusPlus.PhoneBox
             }
         }
 
-        /// <summary>打开编码器（I420 输入需要偶数宽高，奇数会自动向下取整）。</summary>
-        public void Open(int width, int height, int fps, int bitrate)
+        /// <summary>打开编码器（I420 输入需要偶数宽高，奇数会自动向下取整）。码率入参单位为 kbps。</summary>
+        public void Open(int width, int height, int fps, int bitrateKbps)
         {
             lock (sync)
             {
@@ -118,10 +118,15 @@ namespace YeyouPlusPlus.PhoneBox
                     throw new ArgumentOutOfRangeException(nameof(width), "编码分辨率必须大于 0。");
                 }
 
+                // OpenH264 的码率单位是 bps，入参是 kbps，这里换算。
+                // （若直接传 kbps 数值，码率会被当成 bps，导致第一帧 IDR 即超预算，
+                //  后续所有帧被 rate control 跳过，手机只能收到一帧 → 黑屏/静止。）
+                int bitrateBps = bitrateKbps * 1000;
+
                 try
                 {
                     CreateEncoder();
-                    ConfigureEncoder(bitrate);
+                    ConfigureEncoder(bitrateBps);
                     AllocateBuffers();
                     opened = true;
                     frameTimestampMs = 0;
@@ -135,7 +140,7 @@ namespace YeyouPlusPlus.PhoneBox
 
             PhoneBoxLog.Info(
                 "OpenH264 编码器已打开：" + this.width + "x" + this.height
-                + " @" + this.fps + "fps, " + bitrate + "bps。");
+                + " @" + this.fps + "fps, " + bitrateKbps + "kbps。");
         }
 
         /// <summary>编码一帧 24/32bpp Bitmap，返回 H.264 Annex-B 字节流（无输出时返回 null）。</summary>
