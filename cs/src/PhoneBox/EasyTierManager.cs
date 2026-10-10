@@ -16,14 +16,17 @@ namespace YeyouPlusPlus.PhoneBox
     public sealed class EasyTierManager : IDisposable
     {
         /// <summary>
-        /// EasyTier 官方公共共享节点（打洞引导 + 兜底中继）。
+        /// EasyTier 公共共享节点（打洞引导 + 兜底中继）。
         /// 同时连接多个节点，提高校园网等复杂网络下的可用性。
+        ///
+        /// 注意：官方节点 public.easytier.cn / public.easytier.top 已于 2026-02 停止服务
+        /// （域名已注销），此处改用社区仍在维护的公共节点（实测可分配虚拟 IP）。
         /// </summary>
         private static readonly string[] PublicNodes = new[]
         {
-            "tcp://public.easytier.cn:11010",
-            "udp://public.easytier.cn:11010",
-            "tcp://public.easytier.top:11010"
+            "tcp://easytier.weiai.org.cn:11010",
+            "tcp://ros.scpsl.com.cn:11010",
+            "tcp://boi.de5.net:11010"
         };
 
         private readonly string easyTierDir;
@@ -72,13 +75,16 @@ namespace YeyouPlusPlus.PhoneBox
                 + " --dhcp true";
             foreach (var node in PublicNodes)
             {
-                args += " -e " + node;
+                // 用 -p（--peers）连接公共节点；-e（--external-node）只能使用一次，
+                // 多次会报错 "cannot be used multiple times"。
+                args += " -p " + node;
             }
             args += " -l tcp://0.0.0.0:11010"
                 + " -l udp://0.0.0.0:11010"
                 + " -l ws://0.0.0.0:11011"
-                + " -l wss://0.0.0.0:11012"
-                + " -l quic://0.0.0.0:11010";
+                + " -l wss://0.0.0.0:11012";
+            // 注意：不要加 quic://0.0.0.0:11010——QUIC 底层也是 UDP，与 udp://11010
+            // 端口冲突，会导致 easytier-core 启动失败（os error 10048）。
 
             var psi = new ProcessStartInfo
             {
@@ -142,7 +148,14 @@ namespace YeyouPlusPlus.PhoneBox
                     return null;
                 }
                 var obj = JObject.Parse(stdout);
-                return (string)obj["ipv4_addr"];
+                string ip = (string)obj["ipv4_addr"];
+                if (string.IsNullOrEmpty(ip))
+                {
+                    return null;
+                }
+                // ipv4_addr 形如 "10.126.126.1/24"，联机码只需纯 IPv4，去掉 /CIDR 后缀。
+                int slash = ip.IndexOf('/');
+                return slash >= 0 ? ip.Substring(0, slash) : ip;
             }
         }
 

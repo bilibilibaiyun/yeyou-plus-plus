@@ -67,7 +67,7 @@ namespace YeyouPlusPlus
                 string ip = await Task.Run(() => easyTier.QueryVirtualIp(25));
                 if (string.IsNullOrEmpty(ip))
                 {
-                    UpdateStatus("跨网络组网失败：未能获取虚拟 IP（可能需要管理员权限）。");
+                    UpdateStatus("跨网络组网失败：未能获取虚拟 IP。请确认已允许管理员授权，且网络能连通公共节点。");
                     return;
                 }
 
