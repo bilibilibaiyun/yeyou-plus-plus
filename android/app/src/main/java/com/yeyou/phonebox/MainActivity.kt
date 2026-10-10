@@ -389,21 +389,21 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
 
         Thread {
-            val ok = EasyTierBridge.start(info.networkName!!, info.networkSecret!!)
-            if (!ok) {
-                runOnUiThread { showError(getString(R.string.status_error, "组网启动失败")) }
+            val selfIp = EasyTierBridge.deriveSelfIp(info.ip)
+            if (selfIp == null) {
+                runOnUiThread { showError(getString(R.string.status_error, "无法推断本机地址：${info.ip}")) }
                 return@Thread
             }
 
-            val selfIp = EasyTierBridge.queryVirtualIp()
-            if (selfIp == null) {
-                runOnUiThread { showError(getString(R.string.status_error, "获取虚拟 IP 超时")) }
+            val err = EasyTierBridge.start(info.networkName!!, info.networkSecret!!, selfIp)
+            if (err != null) {
+                runOnUiThread { showError(getString(R.string.status_error, "组网启动失败：$err")) }
                 return@Thread
             }
 
             runOnUiThread {
                 pendingRemoteInfo = info
-                EasyTierBridge.startVpn(this@MainActivity, selfIp, info.ip)
+                EasyTierBridge.startVpn(this@MainActivity, "$selfIp/24", info.ip)
             }
         }.start()
     }

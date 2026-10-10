@@ -29,8 +29,8 @@ object EasyTierBridge {
         "tcp://boi.de5.net:11010"
     )
 
-    /** 构造 EasyTier TOML 配置。 */
-    private fun buildConfig(networkName: String, networkSecret: String): String {
+    /** 构造 EasyTier TOML 配置（手动指定虚拟 IP，不用 dhcp）。 */
+    private fun buildConfig(networkName: String, networkSecret: String, selfIp: String): String {
         val peers = PUBLIC_NODES.joinToString("\n") { uri -> "[[peer]]\nuri = \"$uri\"\n" }
         return buildString {
             append("instance_name = \"$INSTANCE_NAME\"\n")
@@ -39,27 +39,42 @@ object EasyTierBridge {
             append("network_name = \"$networkName\"\n")
             append("network_secret = \"$networkSecret\"\n")
             append("\n")
-            append("dhcp = true\n")
+            append("ipv4 = \"$selfIp/24\"\n")
             append("\n")
             append(peers)
         }
     }
 
-    /** 启动组网实例，返回是否成功。 */
-    fun start(networkName: String, networkSecret: String): Boolean {
+    /** 从电脑虚拟 IP 推断本机（手机）虚拟 IP：同网段、末位 +1，避免与电脑冲突。 */
+    fun deriveSelfIp(computerIp: String): String? {
+        val parts = computerIp.split(".")
+        if (parts.size != 4) return null
+        val last = parts[3].toIntOrNull() ?: return null
+        val selfLast = if (last < 254) last + 1 else 2
+        return "${parts[0]}.${parts[1]}.${parts[2]}.$selfLast"
+    }
+
+    /** 启动组网实例，返回 null 表示成功，否则返回错误信息。 */
+    fun start(networkName: String, networkSecret: String, selfIp: String): String? {
         return try {
-            val config = buildConfig(networkName, networkSecret)
+            // 清理可能残留的旧实例（重试场景），避免 "instance name already exists"。
+            try {
+                EasyTierJNI.stopAllInstances()
+            } catch (_: Throwable) {
+            }
+            val config = buildConfig(networkName, networkSecret, selfIp)
             val result = EasyTierJNI.runNetworkInstance(config)
             if (result == 0) {
                 Log.i(TAG, "EasyTier 实例启动成功")
-                true
+                null
             } else {
-                Log.e(TAG, "EasyTier 启动失败: $result, ${EasyTierJNI.getLastError()}")
-                false
+                val err = EasyTierJNI.getLastError() ?: "未知错误（返回码 $result）"
+                Log.e(TAG, "EasyTier 启动失败: $result, $err")
+                err
             }
         } catch (e: Throwable) {
             Log.e(TAG, "EasyTier 启动异常", e)
-            false
+            e.message ?: e.javaClass.simpleName
         }
     }
 
