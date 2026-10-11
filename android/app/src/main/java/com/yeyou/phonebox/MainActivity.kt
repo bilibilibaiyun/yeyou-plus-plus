@@ -2,6 +2,7 @@ package com.yeyou.phonebox
 
 import android.content.Intent
 import android.net.Uri
+import android.net.VpnService
 import android.os.Bundle
 import android.view.Gravity
 import android.view.Surface
@@ -38,6 +39,9 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         private const val SIZE_MAX = 0.30f
         private const val OPACITY_MIN = 0.05f
         private const val OPACITY_MAX = 1.0f
+
+        /** 跨网络 VPN 授权请求码。 */
+        private const val VPN_REQUEST_CODE = 1001
     }
 
     // 主页
@@ -74,6 +78,10 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     /** 待连接的跨网络目标（VPN 隧道建立后再连电脑虚拟 IP）。 */
     private var pendingRemoteInfo: JoinCodeDecoder.JoinInfo? = null
+
+    /** 待授权后启动 VPN 的参数（等待用户授权 VPN 期间暂存）。 */
+    private var pendingVpnSelfIp: String? = null
+    private var pendingVpnRouteIp: String? = null
 
     /** 编辑面板当前选中的按键。 */
     private var selectedButton: GamepadButton? = null
@@ -323,7 +331,8 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     private fun handleJoinCode(code: String) {
         val info = JoinCodeDecoder.decode(code)
-        if (info == null) {
+        // 只接受跨网络（P2P）联机码；局域网联机已移除。
+        if (info == null || !info.isRemote) {
             showError(getString(R.string.invalid_join_code))
             return
         }
@@ -333,15 +342,11 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         // 断开旧会话再建立新会话。
         resetSession()
 
-        if (info.isRemote) {
-            // 跨网络联机：先组网 + 建立 VPN，再连电脑虚拟 IP。
-            startRemoteJoin(info)
-        } else {
-            connectTo(info)
-        }
+        // 跨网络联机：先组网 + 建立 VPN，再连电脑虚拟 IP。
+        startRemoteJoin(info)
     }
 
-    /** 建立到电脑的 TCP 控制通道（局域网直连，或跨网络组网完成后连虚拟 IP）。 */
+    /** 建立到电脑虚拟 IP 的 TCP 控制通道（跨网络组网完成后连接）。 */
     private fun connectTo(info: JoinCodeDecoder.JoinInfo) {
         val ctrl = ControlChannel(info.ip, info.port, info.token)
         ctrl.listener = object : ControlChannel.Listener {
@@ -403,9 +408,44 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
             runOnUiThread {
                 pendingRemoteInfo = info
-                EasyTierBridge.startVpn(this@MainActivity, "$selfIp/24", info.ip)
+                ensureVpnPermission("$selfIp/24", info.ip)
             }
         }.start()
+    }
+
+    /** 检查并请求 VPN 授权；已授权则直接启动 VPN，未授权则弹系统授权框。 */
+    private fun ensureVpnPermission(selfIp: String, routeIp: String) {
+        val prepareIntent = VpnService.prepare(this)
+        if (prepareIntent == null) {
+            // 已授权，直接建立 VPN 隧道。
+            EasyTierBridge.startVpn(this, selfIp, routeIp)
+        } else {
+            // 未授权，暂存参数并弹系统授权框，授权结果回到 onActivityResult。
+            pendingVpnSelfIp = selfIp
+            pendingVpnRouteIp = routeIp
+            startActivityForResult(prepareIntent, VPN_REQUEST_CODE)
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == VPN_REQUEST_CODE) {
+            if (resultCode == RESULT_OK) {
+                val selfIp = pendingVpnSelfIp
+                val routeIp = pendingVpnRouteIp
+                if (selfIp != null && routeIp != null) {
+                    pendingVpnSelfIp = null
+                    pendingVpnRouteIp = null
+                    EasyTierBridge.startVpn(this, selfIp, routeIp)
+                }
+            } else {
+                // 用户拒绝 VPN 授权，无法建立跨网络隧道。
+                pendingVpnSelfIp = null
+                pendingVpnRouteIp = null
+                pendingRemoteInfo = null
+                showError(getString(R.string.status_error, "未授予 VPN 权限，无法建立跨网络连接。"))
+            }
+        }
     }
 
     private fun showGamePage() {

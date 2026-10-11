@@ -40,15 +40,7 @@ namespace YeyouPlusPlus
             UpdateUiState();
         }
 
-        private void GenerateCodeButton_Click(object sender, RoutedEventArgs e)
-        {
-            string code = joinCode.GenerateJoinCode();
-            JoinCodeText.Text = code;
-            AddressText.Text = joinCode.CurrentIp + ":" + joinCode.CurrentPort;
-            UpdateStatus("联机码已生成，等待手机连接。");
-        }
-
-        /// <summary>开启跨网络联机：启动 EasyTier 组网（需管理员权限），生成跨网络联机码。</summary>
+        /// <summary>生成跨网络联机码：启动 EasyTier 组网（需管理员权限），生成跨网络联机码。</summary>
         private async void RemoteButton_Click(object sender, RoutedEventArgs e)
         {
             if (!easyTier.IsAvailable)
@@ -231,7 +223,6 @@ namespace YeyouPlusPlus
 
         private void UpdateUiState()
         {
-            GenerateCodeButton.IsEnabled = !serverStarted;
             StartButton.IsEnabled = !serverStarted;
             StopButton.IsEnabled = serverStarted || (streaming != null && streaming.IsRunning);
         }
