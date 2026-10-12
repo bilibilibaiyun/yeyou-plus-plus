@@ -1,5 +1,8 @@
 package com.yeyou.phonebox
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.net.VpnService
@@ -17,6 +20,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
@@ -394,11 +398,13 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
 
         Thread {
+            AppLog.i("MainActivity", "开始跨网络联机：目标 ${info.ip}:${info.port}，网络 ${info.networkName}")
             val selfIp = EasyTierBridge.deriveSelfIp(info.ip)
             if (selfIp == null) {
                 runOnUiThread { showError(getString(R.string.status_error, "无法推断本机地址：${info.ip}")) }
                 return@Thread
             }
+            AppLog.i("MainActivity", "本机虚拟 IP 推断为 $selfIp")
 
             val err = EasyTierBridge.start(info.networkName!!, info.networkSecret!!, selfIp)
             if (err != null) {
@@ -498,6 +504,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     }
 
     private fun showError(message: String) {
+        AppLog.e("MainActivity", message)
         resetSession()
         statusText.text = message
         AlertDialog.Builder(this)
@@ -505,7 +512,16 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             .setMessage(message)
             .setCancelable(false)
             .setPositiveButton(android.R.string.ok) { _, _ -> showHomePage() }
+            .setNeutralButton("复制日志") { _, _ -> copyLogToClipboard() }
             .show()
+    }
+
+    /** 把应用内收集的完整日志复制到剪贴板，方便反馈排查。 */
+    private fun copyLogToClipboard() {
+        val log = AppLog.dump()
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("页游++日志", log))
+        Toast.makeText(this, "日志已复制（${log.length} 字符）", Toast.LENGTH_LONG).show()
     }
 
     // ---- 推流 / 解码 ----

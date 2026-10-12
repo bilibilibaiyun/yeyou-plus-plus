@@ -74,12 +74,14 @@ class ControlChannel(
         try {
             val s = Socket()
             s.tcpNoDelay = true
+            AppLog.i("ControlChannel", "连接 $host:$port ...")
             s.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
 
             socket = s
             writer = OutputStreamWriter(s.getOutputStream(), StandardCharsets.UTF_8)
             running.set(true)
 
+            AppLog.i("ControlChannel", "TCP 已连接 $host:$port，发送 Hello")
             sendHello()
 
             readerThread = Thread({ readLoop() }, "PhoneBoxControlReader").apply {
@@ -87,6 +89,7 @@ class ControlChannel(
                 start()
             }
         } catch (e: Exception) {
+            AppLog.e("ControlChannel", "连接 $host:$port 失败: ${e.message}", e)
             closeSocket()
             listener?.onError(e.message ?: "TCP 连接失败")
         }
@@ -159,6 +162,7 @@ class ControlChannel(
             }
         } catch (e: Exception) {
             if (running.get()) {
+                AppLog.e("ControlChannel", "读取控制通道失败", e)
                 listener?.onError(e.message ?: "读取控制通道失败")
             }
         } finally {

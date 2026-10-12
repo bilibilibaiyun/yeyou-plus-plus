@@ -2,7 +2,6 @@ package com.yeyou.phonebox
 
 import android.content.Context
 import android.content.Intent
-import android.util.Log
 import com.easytier.jni.EasyTierJNI
 import com.easytier.jni.EasyTierVpnService
 import org.json.JSONObject
@@ -65,15 +64,15 @@ object EasyTierBridge {
             val config = buildConfig(networkName, networkSecret, selfIp)
             val result = EasyTierJNI.runNetworkInstance(config)
             if (result == 0) {
-                Log.i(TAG, "EasyTier 实例启动成功")
+                AppLog.i(TAG, "EasyTier 实例启动成功")
                 null
             } else {
                 val err = EasyTierJNI.getLastError() ?: "未知错误（返回码 $result）"
-                Log.e(TAG, "EasyTier 启动失败: $result, $err")
+                AppLog.e(TAG, "EasyTier 启动失败: $result, $err")
                 err
             }
         } catch (e: Throwable) {
-            Log.e(TAG, "EasyTier 启动异常", e)
+            AppLog.e(TAG, "EasyTier 启动异常", e)
             e.message ?: e.javaClass.simpleName
         }
     }
@@ -96,7 +95,7 @@ object EasyTierBridge {
                     }
                 }
             } catch (e: Throwable) {
-                Log.w(TAG, "查询虚拟 IP 异常", e)
+                AppLog.w(TAG, "查询虚拟 IP 异常", e)
             }
             Thread.sleep(500)
         }
@@ -124,7 +123,7 @@ object EasyTierBridge {
             }
             "$ip/$networkLength"
         } catch (e: Throwable) {
-            Log.w(TAG, "解析虚拟 IP 失败", e)
+            AppLog.w(TAG, "解析虚拟 IP 失败", e)
             null
         }
     }
@@ -140,7 +139,7 @@ object EasyTierBridge {
         intent.putExtra("route_ip", routeIp)
         intent.putExtra("instance_name", INSTANCE_NAME)
         context.startService(intent)
-        Log.i(TAG, "VpnService 已请求启动: $selfIp -> $routeIp")
+        AppLog.i(TAG, "VpnService 已请求启动: $selfIp -> $routeIp")
     }
 
     /** 停止组网 + 关闭 VPN。 */
@@ -152,8 +151,8 @@ object EasyTierBridge {
         try {
             EasyTierJNI.stopAllInstances()
         } catch (e: Throwable) {
-            Log.w(TAG, "停止 EasyTier 异常", e)
+            AppLog.w(TAG, "停止 EasyTier 异常", e)
         }
-        Log.i(TAG, "跨网络组网已停止")
+        AppLog.i(TAG, "跨网络组网已停止")
     }
 }

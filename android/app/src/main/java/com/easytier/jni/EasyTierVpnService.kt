@@ -3,7 +3,7 @@ package com.easytier.jni
 import android.content.Intent
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
-import android.util.Log
+import com.yeyou.phonebox.AppLog
 import kotlin.concurrent.thread
 
 /**
@@ -25,7 +25,6 @@ class EasyTierVpnService : VpnService() {
 
     companion object {
         private const val TAG = "EasyTierVpnService"
-        private const val SELF_PACKAGE = "com.yeyou.phonebox"
 
         /** VPN 隧道建立（setTunFd 成功）后的回调，由 MainActivity 注册。 */
         @Volatile
@@ -38,18 +37,18 @@ class EasyTierVpnService : VpnService() {
         instanceName = intent?.getStringExtra("instance_name")
 
         if (ipv4Address == null || instanceName == null) {
-            Log.e(TAG, "缺少必要参数: ipv4Address=$ipv4Address, instanceName=$instanceName")
+            AppLog.e(TAG, "缺少必要参数: ipv4Address=$ipv4Address, instanceName=$instanceName")
             stopSelf()
             return START_NOT_STICKY
         }
 
-        Log.i(TAG, "启动 VPN - 本机 $ipv4Address -> 目标 $routeIp, 实例 $instanceName")
+        AppLog.i(TAG, "启动 VPN - 本机 $ipv4Address -> 目标 $routeIp, 实例 $instanceName")
 
         thread {
             try {
                 setupVpnInterface(ipv4Address, routeIp)
             } catch (t: Throwable) {
-                Log.e(TAG, "VPN 设置失败", t)
+                AppLog.e(TAG, "VPN 设置失败", t)
                 stopSelf()
             }
         }
@@ -64,8 +63,6 @@ class EasyTierVpnService : VpnService() {
             builder.setSession("YeyouPlusPlus 跨网络联机")
                 .addAddress(ip, networkLength)
                 .addDnsServer("223.5.5.5")
-                // 排除本 App，避免组网/推流的控制流量也走隧道造成回环。
-                .addDisallowedApplication(SELF_PACKAGE)
 
             // 只把「到电脑虚拟 IP」的流量路由进隧道，其余走系统网络。
             if (!routeIp.isNullOrBlank()) {
@@ -74,7 +71,7 @@ class EasyTierVpnService : VpnService() {
 
             val established = builder.establish()
             if (established == null) {
-                Log.e(TAG, "建立 VPN 接口失败（用户可能拒绝授权）")
+                AppLog.e(TAG, "建立 VPN 接口失败（用户可能拒绝授权）")
                 return
             }
             vpnInterface = established
@@ -83,7 +80,7 @@ class EasyTierVpnService : VpnService() {
             if (name != null) {
                 val fd = vpnInterface!!.fd
                 val result = EasyTierJNI.setTunFd(name, fd)
-                Log.i(TAG, "setTunFd($name, fd=$fd) = $result")
+                AppLog.i(TAG, "setTunFd($name, fd=$fd) = $result")
                 if (result == 0) {
                     onReady?.invoke()
                 }
@@ -94,7 +91,7 @@ class EasyTierVpnService : VpnService() {
                 Thread.sleep(1000)
             }
         } catch (t: Throwable) {
-            Log.e(TAG, "VPN 接口设置异常", t)
+            AppLog.e(TAG, "VPN 接口设置异常", t)
         } finally {
             cleanup()
         }
@@ -117,7 +114,7 @@ class EasyTierVpnService : VpnService() {
         } catch (_: Exception) {
         }
         vpnInterface = null
-        Log.i(TAG, "VPN 接口已清理")
+        AppLog.i(TAG, "VPN 接口已清理")
     }
 
     override fun onDestroy() {
