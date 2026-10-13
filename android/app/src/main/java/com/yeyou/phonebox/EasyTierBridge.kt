@@ -65,6 +65,14 @@ object EasyTierBridge {
             val result = EasyTierJNI.runNetworkInstance(config)
             if (result == 0) {
                 AppLog.i(TAG, "EasyTier 实例启动成功")
+                // 诊断：等待实例连接公共节点，查询实例运行状态（含 running / error_msg / virtual_ipv4）。
+                try {
+                    Thread.sleep(3000)
+                    val infos = EasyTierJNI.collectNetworkInfos(10)
+                    AppLog.i(TAG, "组网状态: $infos")
+                } catch (e: Throwable) {
+                    AppLog.w(TAG, "查询组网状态异常", e)
+                }
                 null
             } else {
                 val err = EasyTierJNI.getLastError() ?: "未知错误（返回码 $result）"
