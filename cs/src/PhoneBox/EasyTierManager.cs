@@ -24,6 +24,10 @@ namespace YeyouPlusPlus.PhoneBox
         /// </summary>
         private static readonly string[] PublicNodes = new[]
         {
+            // 自建公共节点（三丰云，稳定可控，优先）。
+            "tcp://43.226.36.117:11010",
+            "udp://43.226.36.117:11010",
+            // 社区公共节点兜底（第三方免费，随时可能失效）。
             "tcp://easytier.weiai.org.cn:11010",
             "tcp://ros.scpsl.com.cn:11010",
             "tcp://boi.de5.net:11010"

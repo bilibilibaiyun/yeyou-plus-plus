@@ -20,9 +20,11 @@ object EasyTierBridge {
     private const val TAG = "EasyTierBridge"
     private const val INSTANCE_NAME = "phonebox"
 
-    // 与电脑端一致的公共节点（打洞引导 + 兜底中继），最大化校园网等复杂网络穿透率。
-    // 注意：官方节点 public.easytier.cn / public.easytier.top 已于 2026-02 停止服务，改用社区节点。
+    // 公共节点（打洞引导 + 兜底中继）：自建节点（三丰云）优先，社区节点兜底。
+    // 注意：官方节点 public.easytier.cn / public.easytier.top 已于 2026-02 停止服务。
     private val PUBLIC_NODES = listOf(
+        "tcp://43.226.36.117:11010",
+        "udp://43.226.36.117:11010",
         "tcp://easytier.weiai.org.cn:11010",
         "tcp://ros.scpsl.com.cn:11010",
         "tcp://boi.de5.net:11010"
