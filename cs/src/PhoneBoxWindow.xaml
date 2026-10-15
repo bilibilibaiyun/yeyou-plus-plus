@@ -18,7 +18,7 @@
         <!-- 标题与说明 -->
         <StackPanel Grid.Row="0">
             <TextBlock Text="手机盒子 · 远程联机" FontSize="18" FontWeight="SemiBold"/>
-            <TextBlock Text="在手机端输入下方联机码即可连接，实现同屏双人游戏。"
+            <TextBlock Text="把下方联机码告诉副设备，配对成功后自动开始推流，实现同屏双人游戏。"
                        FontSize="12" Foreground="{DynamicResource Theme.TextSecondary}" Margin="0,4,0,0"/>
         </StackPanel>
 
@@ -64,10 +64,8 @@
 
         <!-- 操作按钮 -->
         <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
-            <Button x:Name="RemoteButton" Content="生成联机码" Height="34" Padding="16,0"
-                    Margin="0,0,8,0" Click="RemoteButton_Click"/>
-            <Button x:Name="StartButton" Style="{StaticResource PrimaryButton}" Content="开始推流"
-                    Height="34" Padding="16,0" Margin="0,0,8,0" Click="StartButton_Click"/>
+            <Button x:Name="RemoteButton" Style="{StaticResource PrimaryButton}" Content="生成联机码"
+                    Height="34" Padding="16,0" Margin="0,0,8,0" Click="RemoteButton_Click"/>
             <Button x:Name="StopButton" Content="停止推流" Height="34" Padding="16,0"
                     Margin="0,0,8,0" Click="StopButton_Click"/>
             <Button Content="关闭" Height="34" Padding="16,0" Click="CloseButton_Click"/>

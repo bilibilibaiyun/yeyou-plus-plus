@@ -6,8 +6,8 @@ namespace YeyouPlusPlus.PhoneBox
     /// 视频流传输抽象接口。
     ///
     /// 本阶段由 <see cref="UdpRtpTransport"/> 实现（局域网 UDP RTP 直连）。
-    /// 预留该抽象层是为了 P1 阶段跨网络投屏：后续只需新增一个实现同一接口的
-    /// WebRtcTransport，即可在不改动 StreamingService / PhoneBoxServer 的情况下切换传输方式。
+    /// 预留该抽象层是为了后续切换传输方式：新增一个实现同一接口的
+    /// 传输类，即可在不改动 <see cref="StreamingService"/> 的情况下切换传输方式。
     /// </summary>
     public interface IStreamTransport : IDisposable
     {

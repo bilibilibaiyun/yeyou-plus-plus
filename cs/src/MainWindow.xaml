@@ -195,6 +195,10 @@
                                     Margin="0,0,5,0" Content="远程联机" FontSize="12"
                                     Click="PhoneBoxButton_Click"
                                     ToolTip="手机盒子：同屏双人游戏"/>
+                            <Button x:Name="PhoneBoxClientButton" Height="32" Padding="10,0"
+                                    Margin="0,0,5,0" Content="作为从机连接" FontSize="12"
+                                    Click="PhoneBoxClientButton_Click"
+                                    ToolTip="电脑连电脑：输入联机码连接另一台电脑"/>
                             <Button x:Name="ClearCacheButton" Style="{StaticResource IconButton}" Content="&#xE74D;"
                                     Click="ClearCacheButton_Click" ToolTip="清理缓存"/>
                         </StackPanel>

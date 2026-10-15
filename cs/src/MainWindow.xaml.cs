@@ -50,6 +50,9 @@ namespace YeyouPlusPlus
         /// <summary>手机盒子联机窗口实例（隐藏后复用，推流不中断）。</summary>
         private PhoneBoxWindow phoneBoxWindow;
 
+        /// <summary>电脑连电脑从机窗口实例。</summary>
+        private PhoneBoxClientWindow phoneBoxClientWindow;
+
         // ===== 视频背景主题（隐藏彩蛋：主页连点 5 次切换） =====
         private int homeClickCount;
         private DateTime lastHomeClick = DateTime.MinValue;
@@ -891,6 +894,27 @@ namespace YeyouPlusPlus
             phoneBoxWindow.Show();
         }
 
+        /// <summary>
+        /// 打开电脑连电脑从机窗口（输入联机码连接另一台电脑）。
+        /// </summary>
+        private void PhoneBoxClientButton_Click(object sender, RoutedEventArgs e)
+        {
+            // 复用已创建的窗口实例：关闭后再次点击仅重新打开。
+            if (phoneBoxClientWindow != null)
+            {
+                phoneBoxClientWindow.Show();
+                phoneBoxClientWindow.Activate();
+                return;
+            }
+
+            phoneBoxClientWindow = new PhoneBoxClientWindow
+            {
+                Owner = this
+            };
+            phoneBoxClientWindow.Closed += (s, ev) => phoneBoxClientWindow = null;
+            phoneBoxClientWindow.Show();
+        }
+
         // ================= 快捷入口 =================
 
         private void OnQuickLinkIconUpdated()
@@ -1648,6 +1672,7 @@ namespace YeyouPlusPlus
         {
             // 退出软件时确保手机盒子真正停止（关闭窗口、停止推流并释放资源）。
             phoneBoxWindow?.Shutdown();
+            phoneBoxClientWindow?.Close();
 
             QuickLinks.IconUpdated -= OnQuickLinkIconUpdated;
             speedTimer?.Stop();

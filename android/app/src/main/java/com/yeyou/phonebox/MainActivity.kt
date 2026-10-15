@@ -5,7 +5,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.net.VpnService
 import android.os.Bundle
 import android.view.Gravity
 import android.view.Surface
@@ -24,28 +23,21 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
-import com.easytier.jni.EasyTierVpnService
 import java.io.File
 
 /**
  * 页游++ 手机盒子主界面。
  *
- * 流程：主页输入联机码 → 连接 → 游戏页（投屏画面 + 可自定义虚拟按键）。
+ * 流程：主页输入 8 位联机码 → 连接中继服务器配对 → 游戏页（投屏画面 + 可自定义虚拟按键）。
  * 虚拟按键支持「大小 / 位置 / 透明度 / 映射键」自定义，布局本地持久化。
  */
 class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     companion object {
-        /** 手机端 UDP 监听端口，与电脑端 PhoneBoxConfig.UdpPort 一致。 */
-        private const val UDP_PORT = 8761
-
         private const val SIZE_MIN = 0.04f
         private const val SIZE_MAX = 0.30f
         private const val OPACITY_MIN = 0.05f
         private const val OPACITY_MAX = 1.0f
-
-        /** 跨网络 VPN 授权请求码。 */
-        private const val VPN_REQUEST_CODE = 1001
     }
 
     // 主页
@@ -75,17 +67,15 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private var surface: Surface? = null
     private var config: ControlChannel.StreamConfig? = null
 
+    @Volatile
     private var channel: ControlChannel? = null
+
     private var keySender: KeyEventSender? = null
+
+    @Volatile
     private var decoder: VideoDecoder? = null
-    private var udpReceiver: UdpStreamReceiver? = null
 
-    /** 待连接的跨网络目标（VPN 隧道建立后再连电脑虚拟 IP）。 */
-    private var pendingRemoteInfo: JoinCodeDecoder.JoinInfo? = null
-
-    /** 待授权后启动 VPN 的参数（等待用户授权 VPN 期间暂存）。 */
-    private var pendingVpnSelfIp: String? = null
-    private var pendingVpnRouteIp: String? = null
+    private var tunnel: RelayTunnel? = null
 
     /** 编辑面板当前选中的按键。 */
     private var selectedButton: GamepadButton? = null
@@ -334,9 +324,8 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     // ---- 主页 / 连接 ----
 
     private fun handleJoinCode(code: String) {
-        val info = JoinCodeDecoder.decode(code)
-        // 只接受跨网络（P2P）联机码；局域网联机已移除。
-        if (info == null || !info.isRemote) {
+        val trimmed = code.trim()
+        if (trimmed.length != 8 || !trimmed.all { it.isDigit() }) {
             showError(getString(R.string.invalid_join_code))
             return
         }
@@ -346,13 +335,24 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         // 断开旧会话再建立新会话。
         resetSession()
 
-        // 跨网络联机：先组网 + 建立 VPN，再连电脑虚拟 IP。
-        startRemoteJoin(info)
+        // 连中继服务器配对（网络 IO 放后台线程，避免阻塞 UI）。
+        Thread {
+            try {
+                val t = RelayTunnel()
+                t.join(trimmed)
+                runOnUiThread { connectTo(t) }
+            } catch (e: Exception) {
+                AppLog.e("MainActivity", "连接中继服务器失败", e)
+                runOnUiThread { showError(getString(R.string.status_error, e.message ?: "连接失败")) }
+            }
+        }.start()
     }
 
-    /** 建立到电脑虚拟 IP 的 TCP 控制通道（跨网络组网完成后连接）。 */
-    private fun connectTo(info: JoinCodeDecoder.JoinInfo) {
-        val ctrl = ControlChannel(info.ip, info.port, info.token)
+    /** 配对成功后：创建控制通道客户端，发送 Hello 并启动统一读线程（控制 + 视频）。 */
+    private fun connectTo(t: RelayTunnel) {
+        tunnel = t
+
+        val ctrl = ControlChannel(t)
         ctrl.listener = object : ControlChannel.Listener {
             override fun onConfig(config: ControlChannel.StreamConfig) {
                 runOnUiThread {
@@ -379,79 +379,11 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 }
             }
         }
+        ctrl.videoFrameListener = { data -> decoder?.feed(data) }
 
         channel = ctrl
         keySender = KeyEventSender(ctrl)
         ctrl.connect()
-    }
-
-    /** 跨网络联机：后台组网 → 查询虚拟 IP → 请求 VPN 授权，VPN 就绪后自动连接。 */
-    private fun startRemoteJoin(info: JoinCodeDecoder.JoinInfo) {
-        EasyTierVpnService.onReady = {
-            runOnUiThread {
-                val pending = pendingRemoteInfo
-                if (pending != null) {
-                    pendingRemoteInfo = null
-                    connectTo(pending)
-                }
-            }
-        }
-
-        Thread {
-            AppLog.i("MainActivity", "开始跨网络联机：目标 ${info.ip}:${info.port}，网络 ${info.networkName}")
-            val selfIp = EasyTierBridge.deriveSelfIp(info.ip)
-            if (selfIp == null) {
-                runOnUiThread { showError(getString(R.string.status_error, "无法推断本机地址：${info.ip}")) }
-                return@Thread
-            }
-            AppLog.i("MainActivity", "本机虚拟 IP 推断为 $selfIp")
-
-            val err = EasyTierBridge.start(info.networkName!!, info.networkSecret!!, selfIp)
-            if (err != null) {
-                runOnUiThread { showError(getString(R.string.status_error, "组网启动失败：$err")) }
-                return@Thread
-            }
-
-            runOnUiThread {
-                pendingRemoteInfo = info
-                ensureVpnPermission("$selfIp/24", info.ip)
-            }
-        }.start()
-    }
-
-    /** 检查并请求 VPN 授权；已授权则直接启动 VPN，未授权则弹系统授权框。 */
-    private fun ensureVpnPermission(selfIp: String, routeIp: String) {
-        val prepareIntent = VpnService.prepare(this)
-        if (prepareIntent == null) {
-            // 已授权，直接建立 VPN 隧道。
-            EasyTierBridge.startVpn(this, selfIp, routeIp)
-        } else {
-            // 未授权，暂存参数并弹系统授权框，授权结果回到 onActivityResult。
-            pendingVpnSelfIp = selfIp
-            pendingVpnRouteIp = routeIp
-            startActivityForResult(prepareIntent, VPN_REQUEST_CODE)
-        }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == VPN_REQUEST_CODE) {
-            if (resultCode == RESULT_OK) {
-                val selfIp = pendingVpnSelfIp
-                val routeIp = pendingVpnRouteIp
-                if (selfIp != null && routeIp != null) {
-                    pendingVpnSelfIp = null
-                    pendingVpnRouteIp = null
-                    EasyTierBridge.startVpn(this, selfIp, routeIp)
-                }
-            } else {
-                // 用户拒绝 VPN 授权，无法建立跨网络隧道。
-                pendingVpnSelfIp = null
-                pendingVpnRouteIp = null
-                pendingRemoteInfo = null
-                showError(getString(R.string.status_error, "未授予 VPN 权限，无法建立跨网络连接。"))
-            }
-        }
     }
 
     private fun showGamePage() {
@@ -540,23 +472,12 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
         decoder = videoDecoder
 
-        val depacketizer = RtpDepacketizer()
-        val receiver = UdpStreamReceiver(UDP_PORT, depacketizer, videoDecoder)
-        receiver.listener = object : UdpStreamReceiver.Listener {
-            override fun onError(message: String) {
-                runOnUiThread { setStatus(R.string.status_disconnected) }
-            }
-        }
-        receiver.start()
-        udpReceiver = receiver
-
+        // 解码器就绪后再发 Ready，确保主机开始推流时能立即收帧解码。
         channel?.sendReady()
         setStatusTransient(R.string.status_streaming)
     }
 
     private fun stopStreaming() {
-        udpReceiver?.stop()
-        udpReceiver = null
         decoder?.stop()
         decoder = null
     }
@@ -567,6 +488,8 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         channel?.disconnect()
         channel = null
         keySender = null
+        tunnel?.close()
+        tunnel = null
     }
 
     // ---- 按键编辑 ----
@@ -705,8 +628,6 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     override fun onDestroy() {
         super.onDestroy()
-        EasyTierVpnService.onReady = null
         resetSession()
-        EasyTierBridge.stop(this)
     }
 }

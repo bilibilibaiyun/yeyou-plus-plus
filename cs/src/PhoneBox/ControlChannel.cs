@@ -1,8 +1,4 @@
 using System;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Text;
 using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -10,61 +6,61 @@ using Newtonsoft.Json.Linq;
 namespace YeyouPlusPlus.PhoneBox
 {
     /// <summary>
-    /// 电脑端 TCP 控制 / 按键通道（服务端）。
+    /// 电脑端控制 / 按键通道（服务端，基于中继隧道帧传输）。
     ///
-    /// 监听 PhoneBoxConfig.TcpPort，接受手机连接后按行分帧接收 JSON 消息
-    /// （每行一个 JSON，以 '\n' 结尾），复用 PhoneBoxProtocol 做序列化 / 反序列化。
+    /// 通过 <see cref="RelayTunnel"/> 与副设备通信：控制消息统一封装为 type=0x01 帧
+    /// （每帧载荷为一个紧凑 JSON，字段名 PascalCase），复用 PhoneBoxProtocol 做序列化 / 反序列化。
     ///
     /// 消息处理：
     ///   HelloMessage → 回 ConfigMessage（分辨率 / 帧率 / 码率 / 按键布局）
-    ///   ReadyMessage → 标记会话就绪，触发 SessionReady 事件（上层开始推流）
-    ///   KeyMessage   → 触发 KeyReceived 事件（上层注入按键）
+    ///   ReadyMessage → 触发 SessionReady 事件（上层开始推流）
+    ///   KeyMessage   → 注入本机按键，并触发 KeyReceived 事件（上层展示反馈）
     ///
-    /// 消息接收在独立后台线程完成，不阻塞 UI / 推流。
+    /// 消息接收在独立后台线程完成，不阻塞 UI / 推流。Start() 在隧道已建立后启动消息循环。
     /// </summary>
     public sealed class ControlChannel : IDisposable
     {
         private readonly object sync = new object();
         private readonly PhoneBoxConfig config;
+        private readonly RelayTunnel tunnel;
 
-        private TcpListener listener;
-        private Thread acceptThread;
-        private TcpClient currentClient;
+        private Thread receiveThread;
         private volatile bool running;
 
-        public ControlChannel(PhoneBoxConfig config)
+        public ControlChannel(PhoneBoxConfig config, RelayTunnel tunnel)
         {
             this.config = config ?? new PhoneBoxConfig();
+            this.tunnel = tunnel ?? throw new ArgumentNullException(nameof(tunnel));
         }
 
-        /// <summary>手机 TCP 连接建立（参数为手机端 TCP 地址）。</summary>
-        public event Action<IPEndPoint> ClientConnected;
+        /// <summary>副设备已连接（收到 Hello 握手消息）。</summary>
+        public event Action ClientConnected;
 
-        /// <summary>手机 TCP 连接断开（参数为断开前的手机端地址）。</summary>
-        public event Action<IPEndPoint> ClientDisconnected;
+        /// <summary>副设备连接断开。</summary>
+        public event Action ClientDisconnected;
 
-        /// <summary>收到手机 Hello 握手消息。</summary>
+        /// <summary>收到副设备 Hello 握手消息。</summary>
         public event Action<HelloMessage> HelloReceived;
 
-        /// <summary>手机发送 Ready，会话就绪，可开始推流。</summary>
+        /// <summary>副设备发送 Ready，会话就绪，可开始推流。</summary>
         public event Action SessionReady;
 
-        /// <summary>收到手机按键消息。</summary>
+        /// <summary>收到副设备按键消息（已注入本机后抛出，供 UI 展示反馈）。</summary>
         public event Action<KeyMessage> KeyReceived;
 
         /// <summary>
         /// 口令校验器（可选）：收到 Hello 后调用，返回 false 时拒绝该连接。
-        /// 由上层（PhoneBoxServer）注入，用于校验联机码中的鉴权口令。
+        /// 中继配对已由服务器 CODE 鉴权，通常无需再注入口令校验。
         /// </summary>
         public Func<string, bool> TokenValidator { get; set; }
 
-        /// <summary>是否正在监听。</summary>
+        /// <summary>消息循环是否运行中。</summary>
         public bool IsRunning
         {
             get { return running; }
         }
 
-        /// <summary>启动监听，开始接受手机连接。</summary>
+        /// <summary>启动消息循环（隧道需已通过 SendHost 建立）。</summary>
         public void Start()
         {
             lock (sync)
@@ -73,24 +69,22 @@ namespace YeyouPlusPlus.PhoneBox
                 {
                     return;
                 }
-
-                listener = new TcpListener(IPAddress.Any, config.TcpPort);
-                listener.Start();
                 running = true;
 
-                acceptThread = new Thread(AcceptLoop)
+                receiveThread = new Thread(ReceiveLoop)
                 {
                     IsBackground = true,
-                    Name = "PhoneBoxControlAccept"
+                    Name = "PhoneBoxControlRelay"
                 };
-                acceptThread.Start();
+                receiveThread.Start();
             }
-            PhoneBoxLog.Info("TCP 控制通道已监听端口 " + config.TcpPort + "。");
+            PhoneBoxLog.Info("控制通道已启动（中继帧传输）。");
         }
 
-        /// <summary>停止监听并断开当前手机连接。</summary>
+        /// <summary>停止消息循环并关闭隧道。</summary>
         public void Stop()
         {
+            Thread t;
             lock (sync)
             {
                 if (!running)
@@ -98,22 +92,18 @@ namespace YeyouPlusPlus.PhoneBox
                     return;
                 }
                 running = false;
-
-                try
-                {
-                    if (listener != null)
-                    {
-                        listener.Stop();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    PhoneBoxLog.Warn("控制通道监听停止失败：" + ex.Message);
-                }
-
-                CloseCurrentClient();
+                t = receiveThread;
+                receiveThread = null;
             }
-            PhoneBoxLog.Info("TCP 控制通道已停止。");
+
+            // 关闭隧道使阻塞中的 ReadLine 退出。
+            tunnel.Close();
+
+            if (t != null && t != Thread.CurrentThread)
+            {
+                t.Join(2000);
+            }
+            PhoneBoxLog.Info("控制通道已停止。");
         }
 
         public void Dispose()
@@ -121,75 +111,25 @@ namespace YeyouPlusPlus.PhoneBox
             Stop();
         }
 
-        /// <summary>接受循环：每接受一个连接，派一个后台线程处理。</summary>
-        private void AcceptLoop()
+        /// <summary>消息接收循环：按帧读取 type=0x01 控制消息并分发。</summary>
+        private void ReceiveLoop()
         {
-            while (running)
-            {
-                TcpClient client;
-                try
-                {
-                    client = listener.AcceptTcpClient();
-                }
-                catch (SocketException)
-                {
-                    // listener 被 Stop() 关闭时正常退出。
-                    break;
-                }
-                catch (ObjectDisposedException)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    PhoneBoxLog.Warn("接受手机连接失败：" + ex.Message);
-                    continue;
-                }
-
-                // 同一时刻只保留一个手机会话：新连接到达时先断开旧连接。
-                lock (sync)
-                {
-                    CloseCurrentClient();
-                }
-
-                var thread = new Thread(() => HandleClient(client))
-                {
-                    IsBackground = true,
-                    Name = "PhoneBoxControlClient"
-                };
-                thread.Start();
-            }
-        }
-
-        /// <summary>处理单个手机连接的消息循环。</summary>
-        private void HandleClient(TcpClient client)
-        {
-            var remote = client.Client.RemoteEndPoint as IPEndPoint;
-
-            lock (sync)
-            {
-                currentClient = client;
-            }
-
-            NetworkStream stream = null;
             try
             {
-                stream = client.GetStream();
-                RaiseClientConnected(remote);
-
-                using (var reader = new StreamReader(stream, new UTF8Encoding(false)))
+                while (running)
                 {
-                    string line;
-                    while (running && (line = reader.ReadLine()) != null)
+                    string line = tunnel.ReadLine();
+                    if (line == null)
                     {
-                        if (string.IsNullOrWhiteSpace(line))
-                        {
-                            continue;
-                        }
-                        if (!ProcessLine(line, stream))
-                        {
-                            break; // 鉴权失败等需要断开连接的情况。
-                        }
+                        break;
+                    }
+                    if (string.IsNullOrWhiteSpace(line))
+                    {
+                        continue;
+                    }
+                    if (!ProcessLine(line))
+                    {
+                        break; // 鉴权失败等需要断开连接的情况。
                     }
                 }
             }
@@ -197,25 +137,19 @@ namespace YeyouPlusPlus.PhoneBox
             {
                 if (running)
                 {
-                    PhoneBoxLog.Warn("控制通道会话异常断开：" + ex.Message);
+                    PhoneBoxLog.Warn("控制通道会话异常：" + ex.Message);
                 }
             }
             finally
             {
-                lock (sync)
-                {
-                    if (ReferenceEquals(currentClient, client))
-                    {
-                        currentClient = null;
-                    }
-                }
-                client.Close();
-                RaiseClientDisconnected(remote);
+                // 无论主动停止还是远端断开，都关闭隧道以复位连接状态（供下次重新 SendHost）。
+                tunnel.Close();
+                RaiseClientDisconnected();
             }
         }
 
         /// <summary>解析并分发一行 JSON 消息。返回 false 表示需要断开连接。</summary>
-        private bool ProcessLine(string line, NetworkStream stream)
+        private bool ProcessLine(string line)
         {
             object message;
             try
@@ -233,10 +167,11 @@ namespace YeyouPlusPlus.PhoneBox
             {
                 if (TokenValidator != null && !TokenValidator(hello.Token))
                 {
-                    PhoneBoxLog.Warn("手机握手口令校验失败，连接被拒绝。");
+                    PhoneBoxLog.Warn("副设备握手口令校验失败，连接被拒绝。");
                     return false;
                 }
-                SendConfig(stream);
+                SendConfig();
+                RaiseClientConnected();
                 RaiseHelloReceived(hello);
                 return true;
             }
@@ -250,6 +185,7 @@ namespace YeyouPlusPlus.PhoneBox
             var key = message as KeyMessage;
             if (key != null)
             {
+                InjectKey(key);
                 RaiseKeyReceived(key);
                 return true;
             }
@@ -287,7 +223,7 @@ namespace YeyouPlusPlus.PhoneBox
         }
 
         /// <summary>回应 ConfigMessage（分辨率 / 帧率 / 码率 / 按键布局）。</summary>
-        private void SendConfig(NetworkStream stream)
+        private void SendConfig()
         {
             var message = new ConfigMessage
             {
@@ -298,49 +234,52 @@ namespace YeyouPlusPlus.PhoneBox
                 KeyLayout = config.KeyLayout
             };
 
-            SendLine(stream, PhoneBoxProtocol.Serialize(message));
+            tunnel.WriteLine(PhoneBoxProtocol.Serialize(message));
         }
 
-        /// <summary>发送一行文本（追加 '\n' 作为分帧符）。</summary>
-        private static void SendLine(NetworkStream stream, string line)
+        /// <summary>
+        /// 注入副设备上报的按键：优先使用上报的扫描码；缺失时由虚拟键码换算扫描码。
+        /// 双人输入隔离：副设备按键统一用扫描码注入（KEYEVENTF_SCANCODE）。
+        /// </summary>
+        private static void InjectKey(KeyMessage message)
         {
-            var bytes = Encoding.UTF8.GetBytes(line + "\n");
-            stream.Write(bytes, 0, bytes.Length);
-            stream.Flush();
-        }
+            ushort scanCode = message.ScanCode > 0
+                ? (ushort)message.ScanCode
+                : RemoteInputSimulator.ScanCodeFromVirtualKey(message.KeyCode);
 
-        private void CloseCurrentClient()
-        {
-            if (currentClient == null)
+            if (scanCode == 0)
             {
+                PhoneBoxLog.Warn(
+                    "收到无法映射的按键消息：KeyCode=" + message.KeyCode
+                    + "，ScanCode=" + message.ScanCode + "。");
                 return;
             }
-            try
+
+            if (message.IsDown)
             {
-                currentClient.Close();
+                RemoteInputSimulator.KeyDown(scanCode);
             }
-            catch (Exception ex)
+            else
             {
-                PhoneBoxLog.Warn("关闭旧手机连接失败：" + ex.Message);
+                RemoteInputSimulator.KeyUp(scanCode);
             }
-            currentClient = null;
         }
 
-        private void RaiseClientConnected(IPEndPoint remote)
+        private void RaiseClientConnected()
         {
             var handler = ClientConnected;
             if (handler != null)
             {
-                handler(remote);
+                handler();
             }
         }
 
-        private void RaiseClientDisconnected(IPEndPoint remote)
+        private void RaiseClientDisconnected()
         {
             var handler = ClientDisconnected;
             if (handler != null)
             {
-                handler(remote);
+                handler();
             }
         }
 

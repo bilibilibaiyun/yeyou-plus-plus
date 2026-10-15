@@ -8,7 +8,7 @@ namespace YeyouPlusPlus.PhoneBox
     /// 基于 UDP 的 RTP 发送实现（局域网直连）。
     ///
     /// UDP 是无连接协议，因此本类在发送前需要知道手机端的 IP:Port：
-    /// 手机先通过 TCP 控制通道握手，握手成功后由 PhoneBoxServer 调用
+    /// 手机先通过 TCP 控制通道握手，握手成功后由上层调用
     /// <see cref="SetRemote"/> 记录远端地址，之后 RTP 包全部发往该地址。
     /// </summary>
     public sealed class UdpRtpTransport : IStreamTransport

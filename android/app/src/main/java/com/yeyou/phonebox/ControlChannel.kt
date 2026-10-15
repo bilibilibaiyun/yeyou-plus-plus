@@ -1,35 +1,26 @@
 package com.yeyou.phonebox
 
 import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.io.OutputStreamWriter
-import java.net.InetSocketAddress
-import java.net.Socket
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * TCP 控制通道（手机端客户端）。
+ * 基于中继隧道的控制通道客户端（手机端）。
  *
- * 与电脑端 `ControlChannel`（服务端）对齐：
- *   - 连接后发送 Hello（Type=1，含 Token）→ 等待 Config（Type=2）→ 发送 Ready（Type=3）
- *   - 之后可随时发送 Key（Type=4）
- *   - 每行一个 JSON，以 '\n' 结尾（换行分帧），字段名 PascalCase
+ * 中继隧道是单条双向字节流，控制消息（type=0x01）与视频帧（type=0x02）在同一流上多路复用，
+ * 因此本类用一个统一的读线程按帧读取并分发：
+ *   - type=0x01 → 解析控制消息，识别 Config（Type=2）后回调 [Listener.onConfig]；
+ *   - type=0x02 → 触发 [videoFrameListener]，交给上层解码上屏。
+ *
+ * 发送：connect() 发 Hello（ClientType="android"），sendReady() 发 Ready，sendKey() 发 Key。
  */
-class ControlChannel(
-    private val host: String,
-    private val port: Int,
-    private val token: String
-) {
+class ControlChannel(private val tunnel: RelayTunnel) {
 
     companion object {
         const val TYPE_HELLO = 1
         const val TYPE_CONFIG = 2
         const val TYPE_READY = 3
         const val TYPE_KEY = 4
-
-        private const val CONNECT_TIMEOUT_MS = 5_000
     }
 
     /** 电脑端下发的推流 / 按键布局配置。 */
@@ -50,21 +41,20 @@ class ControlChannel(
     @Volatile
     var listener: Listener? = null
 
+    /** 收到一帧完整 H.264 Annex-B 视频帧（type=0x02）。 */
+    @Volatile
+    var videoFrameListener: ((ByteArray) -> Unit)? = null
+
     private val running = AtomicBoolean(false)
-    private var socket: Socket? = null
-    private var writer: OutputStreamWriter? = null
     private var readerThread: Thread? = null
 
     /** 是否已连接（仅用于状态展示，非精确断言）。 */
     val isConnected: Boolean
-        get() {
-            val s = socket ?: return false
-            return s.isConnected && !s.isClosed
-        }
+        get() = running.get() && tunnel.isConnected
 
     /**
-     * 建立 TCP 连接，发送 Hello，并启动后台读线程等待 Config。
-     * 连接 / 发送失败时通过 [Listener.onError] 回调（回调发生在当前调用线程）。
+     * 发送 Hello 并启动统一读线程（隧道需已完成 join 配对）。
+     * 发送失败时通过 [Listener.onError] 回调。
      */
     fun connect() {
         if (running.get()) {
@@ -72,26 +62,18 @@ class ControlChannel(
         }
 
         try {
-            val s = Socket()
-            s.tcpNoDelay = true
-            AppLog.i("ControlChannel", "连接 $host:$port ...")
-            s.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
-
-            socket = s
-            writer = OutputStreamWriter(s.getOutputStream(), StandardCharsets.UTF_8)
             running.set(true)
-
-            AppLog.i("ControlChannel", "TCP 已连接 $host:$port，发送 Hello")
             sendHello()
 
-            readerThread = Thread({ readLoop() }, "PhoneBoxControlReader").apply {
+            readerThread = Thread({ readLoop() }, "PhoneBoxRelayDemux").apply {
                 isDaemon = true
                 start()
             }
+            AppLog.i("ControlChannel", "已发送 Hello，读线程已启动")
         } catch (e: Exception) {
-            AppLog.e("ControlChannel", "连接 $host:$port 失败: ${e.message}", e)
-            closeSocket()
-            listener?.onError(e.message ?: "TCP 连接失败")
+            AppLog.e("ControlChannel", "启动失败: ${e.message}", e)
+            running.set(false)
+            listener?.onError(e.message ?: "控制通道启动失败")
         }
     }
 
@@ -100,7 +82,7 @@ class ControlChannel(
         val msg = JSONObject()
             .put("Type", TYPE_READY)
             .put("Ready", true)
-        sendLine(msg.toString())
+        writeLine(msg.toString())
     }
 
     /**
@@ -117,13 +99,13 @@ class ControlChannel(
             .put("ScanCode", scanCode)
             .put("IsDown", isDown)
             .put("Timestamp", System.currentTimeMillis())
-        sendLine(msg.toString())
+        writeLine(msg.toString())
     }
 
     /** 断开连接并停止读线程。 */
     fun disconnect() {
         running.set(false)
-        closeSocket()
+        tunnel.close()
         readerThread?.interrupt()
         readerThread = null
     }
@@ -133,48 +115,51 @@ class ControlChannel(
             .put("Type", TYPE_HELLO)
             .put("ClientType", "android")
             .put("Version", "1.0")
-            .put("Token", token)
-        sendLine(msg.toString())
+            .put("Token", "")
+        writeLine(msg.toString())
     }
 
-    /** 发送一行 JSON（自动追加 '\n'）。写操作串行化，避免多线程交叠。 */
-    private fun sendLine(line: String) {
-        val w = writer ?: return
-        synchronized(w) {
-            w.write(line)
-            w.write("\n")
-            w.flush()
-        }
+    private fun writeLine(line: String) {
+        tunnel.writeLine(line)
     }
 
-    /** 后台读线程：按行解析 JSON，识别 Config 消息并回调。 */
+    /** 统一读线程：按帧读取并分发控制（0x01）与视频（0x02）。 */
     private fun readLoop() {
         try {
-            val s = socket ?: return
-            val reader = BufferedReader(InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8))
-            var line: String?
             while (running.get()) {
-                line = reader.readLine() ?: break
-                if (line.isBlank()) {
-                    continue
+                val frame = tunnel.readFrame() ?: break
+                val (type, data) = frame
+                when (type) {
+                    RelayTunnel.FRAME_TYPE_CONTROL -> handleControl(data)
+                    RelayTunnel.FRAME_TYPE_VIDEO -> videoFrameListener?.invoke(data)
+                    // 其他未知类型直接忽略。
                 }
-                handleLine(line)
             }
         } catch (e: Exception) {
             if (running.get()) {
-                AppLog.e("ControlChannel", "读取控制通道失败", e)
-                listener?.onError(e.message ?: "读取控制通道失败")
+                AppLog.e("ControlChannel", "读取隧道失败", e)
+                listener?.onError(e.message ?: "读取隧道失败")
             }
         } finally {
             if (running.getAndSet(false)) {
                 listener?.onDisconnected()
             }
-            closeSocket()
+            // 复位连接状态（供下次重新 join）。
+            tunnel.close()
         }
     }
 
-    /** 解析一行消息。手机端只关心 Config（Type=2），其余类型忽略。 */
-    private fun handleLine(line: String) {
+    /** 解析控制消息。手机端只关心 Config（Type=2），其余类型忽略。 */
+    private fun handleControl(data: ByteArray) {
+        if (data.isEmpty()) {
+            return
+        }
+
+        val line = String(data, StandardCharsets.UTF_8)
+        if (line.isBlank()) {
+            return
+        }
+
         try {
             val obj = JSONObject(line)
             when (obj.optInt("Type", -1)) {
@@ -189,24 +174,11 @@ class ControlChannel(
                     listener?.onConfig(config)
                 }
                 else -> {
-                    // 手机端无需处理其他消息类型。
+                    // 手机端无需处理其他控制消息类型。
                 }
             }
         } catch (e: Exception) {
-            // 单行 JSON 解析失败不影响连接，忽略即可。
+            // 单条控制消息解析失败不影响连接，忽略即可。
         }
-    }
-
-    private fun closeSocket() {
-        try {
-            writer?.close()
-        } catch (_: Exception) {
-        }
-        try {
-            socket?.close()
-        } catch (_: Exception) {
-        }
-        writer = null
-        socket = null
     }
 }
