@@ -22,12 +22,14 @@ namespace YeyouPlusPlus
         private const long CacheWarningBytes = 400L * 1024 * 1024; // 400MB 临界值
         private const long CacheDangerBytes = 800L * 1024 * 1024;  // 800MB 危险值
 
-        /// <summary>一个浏览器标签页。</summary>
+        /// <summary>一个标签页（浏览器标签，或电脑连电脑的从机画面标签）。</summary>
         private class BrowserTab
         {
-            public BrowserHost Host;
+            public BrowserHost Host;              // 浏览器标签的 CEF 宿主
+            public PhoneBoxClientView ClientView; // 从机画面标签（非浏览器）
             public string Title;
             public bool HasNavigated; // 是否已真正导航过（非 about:blank）
+            public bool IsClient { get { return ClientView != null; } }
         }
 
         private readonly List<BrowserTab> tabs = new List<BrowserTab>();
@@ -47,11 +49,8 @@ namespace YeyouPlusPlus
         private double pendingZoomPercent = 100;
         private bool shadowSidebarExpanded;
 
-        /// <summary>手机盒子联机窗口实例（隐藏后复用，推流不中断）。</summary>
-        private PhoneBoxWindow phoneBoxWindow;
-
-        /// <summary>电脑连电脑从机窗口实例。</summary>
-        private PhoneBoxClientWindow phoneBoxClientWindow;
+        /// <summary>远程联机面板（主窗口内视图，合并主机 + 从机）。</summary>
+        // PhoneBoxPanel 控件在 MainWindow.xaml 中以 x:Name="PhoneBoxPanel" 声明，由 InitializeComponent 生成。
 
         // ===== 视频背景主题（隐藏彩蛋：主页连点 5 次切换） =====
         private int homeClickCount;
@@ -127,6 +126,10 @@ namespace YeyouPlusPlus
                 RenderTabs();
                 RestoreVideoThemeState();
             };
+
+            // 远程联机面板：注入抓屏目标（当前游戏标签页句柄）+ 订阅从机标签请求。
+            PhoneBoxPanel.CaptureWindowProvider = () => CurrentHost != null ? CurrentHost.Handle : IntPtr.Zero;
+            PhoneBoxPanel.ClientTabRequested += OpenClientTab;
 
             RenderQuickLinks();
             RefreshSettingsView();
@@ -228,9 +231,19 @@ namespace YeyouPlusPlus
         {
             for (int i = 0; i < tabs.Count; i++)
             {
-                tabs[i].Host.Visibility = i == activeTabIndex ? Visibility.Visible : Visibility.Collapsed;
+                var tab = tabs[i];
+                var visible = i == activeTabIndex ? Visibility.Visible : Visibility.Collapsed;
+                if (tab.IsClient)
+                {
+                    tab.ClientView.Visibility = visible;
+                }
+                else
+                {
+                    tab.Host.Visibility = visible;
+                }
             }
             RenderTabs();
+            UpdateClientKeyboard();
             var h = CurrentHost;
             if (h != null)
             {
@@ -241,16 +254,45 @@ namespace YeyouPlusPlus
             }
         }
 
+        /// <summary>仅当从机画面标签处于激活状态时，才把键盘捕获挂到该从机。</summary>
+        private void UpdateClientKeyboard()
+        {
+            for (int i = 0; i < tabs.Count; i++)
+            {
+                var tab = tabs[i];
+                if (tab.IsClient)
+                {
+                    if (i == activeTabIndex)
+                    {
+                        tab.ClientView.AttachKeyboard(this);
+                    }
+                    else
+                    {
+                        tab.ClientView.DetachKeyboard(this);
+                    }
+                }
+            }
+        }
+
         private void CloseTab(int index)
         {
             if (index < 0 || index >= tabs.Count)
             {
                 return;
             }
-            var host = tabs[index].Host;
+            var tab = tabs[index];
             tabs.RemoveAt(index);
-            BrowserContainer.Children.Remove(host);
-            host.Dispose();
+            if (tab.IsClient)
+            {
+                BrowserContainer.Children.Remove(tab.ClientView);
+                tab.ClientView.DetachKeyboard(this);
+                tab.ClientView.Dispose();
+            }
+            else
+            {
+                BrowserContainer.Children.Remove(tab.Host);
+                tab.Host.Dispose();
+            }
 
             if (tabs.Count == 0)
             {
@@ -410,9 +452,11 @@ namespace YeyouPlusPlus
             HomePanel.Visibility = view == "home" ? Visibility.Visible : Visibility.Collapsed;
             BrowserView.Visibility = view == "browser" ? Visibility.Visible : Visibility.Collapsed;
             SettingsPanel.Visibility = view == "settings" ? Visibility.Visible : Visibility.Collapsed;
+            PhoneBoxPanel.Visibility = view == "phonebox" ? Visibility.Visible : Visibility.Collapsed;
 
             NavHomeButton.Tag = view == "home" ? "selected" : null;
             NavSettingsButton.Tag = view == "settings" ? "selected" : null;
+            NavPhoneBoxButton.Tag = view == "phonebox" ? "selected" : null;
 
             // 浏览器视图自动收拢侧边栏，其他视图自动展开。
             var wantCollapsed = view == "browser";
@@ -429,6 +473,27 @@ namespace YeyouPlusPlus
             {
                 RefreshSettingsView();
             }
+
+            // 从机画面标签仅在「浏览器视图 + 处于激活状态」时捕获键盘，其他视图一律解除。
+            if (view == "browser")
+            {
+                UpdateClientKeyboard();
+            }
+            else
+            {
+                DetachAllClientKeyboard();
+            }
+        }
+
+        private void DetachAllClientKeyboard()
+        {
+            foreach (var tab in tabs)
+            {
+                if (tab.IsClient)
+                {
+                    tab.ClientView.DetachKeyboard(this);
+                }
+            }
         }
 
         private void NavHome_Click(object sender, RoutedEventArgs e)
@@ -438,6 +503,8 @@ namespace YeyouPlusPlus
         }
 
         private void NavSettings_Click(object sender, RoutedEventArgs e) => ShowView("settings");
+
+        private void NavPhoneBox_Click(object sender, RoutedEventArgs e) => ShowView("phonebox");
 
         private void ToggleSidebarButton_Click(object sender, RoutedEventArgs e) => ToggleSidebar();
 
@@ -869,50 +936,37 @@ namespace YeyouPlusPlus
             });
         }
 
-        // ================= 手机盒子：远程联机入口 =================
+        // ================= 远程联机：从机画面标签页 =================
 
         /// <summary>
-        /// 打开远程联机窗口（手机盒子同屏双人游戏入口）。
-        /// 推流捕获目标设为当前游戏标签页的 HwndHost 窗口句柄。
+        /// 从机配对成功后，新建一个标签页显示主机画面并承载虚拟按键操控。
         /// </summary>
-        private void PhoneBoxButton_Click(object sender, RoutedEventArgs e)
+        private void OpenClientTab(RelayTunnel tunnel)
         {
-            // 复用已创建的窗口实例：隐藏后再次点击仅重新显示，推流保持不中断。
-            if (phoneBoxWindow != null)
+            var view = new PhoneBoxClientView();
+            var tab = new BrowserTab
             {
-                phoneBoxWindow.Show();
-                phoneBoxWindow.Activate();
-                return;
-            }
-
-            IntPtr handle = CurrentHost != null ? CurrentHost.Handle : IntPtr.Zero;
-            phoneBoxWindow = new PhoneBoxWindow(handle)
-            {
-                Owner = this
+                ClientView = view,
+                Title = "联机 · 从机",
             };
-            phoneBoxWindow.Closed += (s, ev) => phoneBoxWindow = null;
-            phoneBoxWindow.Show();
-        }
-
-        /// <summary>
-        /// 打开电脑连电脑从机窗口（输入联机码连接另一台电脑）。
-        /// </summary>
-        private void PhoneBoxClientButton_Click(object sender, RoutedEventArgs e)
-        {
-            // 复用已创建的窗口实例：关闭后再次点击仅重新打开。
-            if (phoneBoxClientWindow != null)
+            view.ConnectedChanged += isConnected =>
             {
-                phoneBoxClientWindow.Show();
-                phoneBoxClientWindow.Activate();
-                return;
-            }
-
-            phoneBoxClientWindow = new PhoneBoxClientWindow
-            {
-                Owner = this
+                Dispatcher.InvokeAsync(() =>
+                {
+                    tab.Title = isConnected ? "联机 · 从机" : "联机 · 已断开";
+                    RenderTabs();
+                });
             };
-            phoneBoxClientWindow.Closed += (s, ev) => phoneBoxClientWindow = null;
-            phoneBoxClientWindow.Show();
+
+            tabs.Add(tab);
+            BrowserContainer.Children.Add(view);
+
+            view.Start(tunnel);
+
+            activeTabIndex = tabs.Count - 1;
+            ApplyActiveTab();
+            ShowView("browser");
+            PhoneBoxPanel.OnClientTabOpened();
         }
 
         // ================= 快捷入口 =================
@@ -1670,9 +1724,8 @@ namespace YeyouPlusPlus
 
         protected override void OnClosed(EventArgs e)
         {
-            // 退出软件时确保手机盒子真正停止（关闭窗口、停止推流并释放资源）。
-            phoneBoxWindow?.Shutdown();
-            phoneBoxClientWindow?.Close();
+            // 退出软件时停止主机推流，并释放所有标签（含从机画面标签）资源。
+            PhoneBoxPanel.Shutdown();
 
             QuickLinks.IconUpdated -= OnQuickLinkIconUpdated;
             speedTimer?.Stop();
@@ -1681,7 +1734,15 @@ namespace YeyouPlusPlus
             zoomDebounce?.Stop();
             foreach (var tab in tabs)
             {
-                tab.Host.Dispose();
+                if (tab.IsClient)
+                {
+                    tab.ClientView.DetachKeyboard(this);
+                    tab.ClientView.Dispose();
+                }
+                else
+                {
+                    tab.Host.Dispose();
+                }
             }
             tabs.Clear();
             base.OnClosed(e);

@@ -1,6 +1,7 @@
 <Window x:Class="YeyouPlusPlus.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:YeyouPlusPlus"
         Title="页游++" Height="720" Width="1180" MinHeight="560" MinWidth="880"
         WindowState="Maximized"
         WindowStartupLocation="CenterScreen"
@@ -56,6 +57,15 @@
                             <TextBlock Text="&#xE80F;" FontFamily="{StaticResource IconFont}"
                                        FontSize="15" Width="22" TextAlignment="Center"/>
                             <TextBlock x:Name="NavHomeText" Text="主页" Margin="9,0,0,0"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Button x:Name="NavPhoneBoxButton" Style="{StaticResource SidebarButton}"
+                            Click="NavPhoneBox_Click" ToolTip="远程联机" Margin="0,2,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE716;" FontFamily="{StaticResource IconFont}"
+                                       FontSize="15" Width="22" TextAlignment="Center"/>
+                            <TextBlock x:Name="NavPhoneBoxText" Text="联机" Margin="9,0,0,0"/>
                         </StackPanel>
                     </Button>
 
@@ -191,14 +201,6 @@
                                     Margin="0,0,5,0" Click="FavoriteButton_Click" ToolTip="收藏当前页"/>
                             <Button x:Name="FavoritesButton" Style="{StaticResource IconButton}" Content="&#xE700;"
                                     Margin="0,0,5,0" Click="FavoritesButton_Click" ToolTip="收藏夹"/>
-                            <Button x:Name="PhoneBoxButton" Height="32" Padding="10,0"
-                                    Margin="0,0,5,0" Content="远程联机" FontSize="12"
-                                    Click="PhoneBoxButton_Click"
-                                    ToolTip="手机盒子：同屏双人游戏"/>
-                            <Button x:Name="PhoneBoxClientButton" Height="32" Padding="10,0"
-                                    Margin="0,0,5,0" Content="作为从机连接" FontSize="12"
-                                    Click="PhoneBoxClientButton_Click"
-                                    ToolTip="电脑连电脑：输入联机码连接另一台电脑"/>
                             <Button x:Name="ClearCacheButton" Style="{StaticResource IconButton}" Content="&#xE74D;"
                                     Click="ClearCacheButton_Click" ToolTip="清理缓存"/>
                         </StackPanel>
@@ -345,6 +347,9 @@
                 <TextBlock x:Name="StatusText" Text="就绪" FontSize="12"
                            Foreground="{DynamicResource Theme.TextSecondary}"/>
             </Border>
+
+            <!-- 『远程联机』 -->
+            <local:PhoneBoxPanel x:Name="PhoneBoxPanel" Visibility="Collapsed"/>
         </Grid>
 
         <!-- ============ 右侧影子边栏（默认收拢） ============ -->

@@ -57,7 +57,7 @@ class RelayTunnel(
         socket = s
         input = DataInputStream(s.getInputStream())
         output = DataOutputStream(s.getOutputStream())
-        AppLog.i("RelayTunnel", "已连接中继服务器 $host:$port")
+        AppLog.i("RelayTunnel", "已连接中继服务器")
     }
 
     /**

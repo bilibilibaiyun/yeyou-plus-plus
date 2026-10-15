@@ -1,0 +1,10 @@
+<UserControl x:Class="YeyouPlusPlus.PhoneBoxClientView"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Background="{DynamicResource Theme.WindowBg}">
+    <Viewbox Stretch="Uniform">
+        <Grid x:Name="VideoFrame" Width="1280" Height="720" Background="Black">
+            <Image x:Name="VideoImage" Stretch="Fill"/>
+        </Grid>
+    </Viewbox>
+</UserControl>

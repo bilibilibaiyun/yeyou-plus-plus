@@ -68,12 +68,15 @@ func main() {
 func handle(conn net.Conn) {
 	remote := conn.RemoteAddr().String()
 	reader := bufio.NewReader(conn)
+	// 读第一行（HOST/JOIN）时设 15 秒超时，防止恶意连接占坑不发数据。
 	_ = conn.SetReadDeadline(time.Now().Add(15 * time.Second))
 	line, err := reader.ReadString('\n')
 	if err != nil {
 		conn.Close()
 		return
 	}
+	// 读完第一行后立即清除超时，避免影响后续双向转发（否则 15 秒无数据就会被切断）。
+	_ = conn.SetReadDeadline(time.Time{})
 	line = strings.TrimSpace(line)
 
 	switch {
@@ -134,6 +137,8 @@ func joinFlow(conn net.Conn, reader *bufio.Reader, code string, remote string) {
 		closeSession(sess)
 		return
 	}
+	// 清除副设备连接的读超时（handle 里为防恶意连接设了 15 秒），否则转发阶段 15 秒无数据就会被切断。
+	_ = conn.SetReadDeadline(time.Time{})
 	log.Printf("[%s] 副设备加入，码 %s 配对成功", remote, code)
 	close(sess.ready)
 }

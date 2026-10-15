@@ -114,7 +114,7 @@ namespace YeyouPlusPlus.PhoneBox
                 connected = true;
             }
 
-            PhoneBoxLog.Info("中继服务器已连接：" + serverHost + ":" + serverPort + "。");
+            PhoneBoxLog.Info("中继服务器已连接。");
         }
 
         /// <summary>

@@ -1,0 +1,72 @@
+<UserControl x:Class="YeyouPlusPlus.PhoneBoxPanel"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Background="{DynamicResource Theme.WindowBg}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="24" MaxWidth="680" HorizontalAlignment="Center">
+            <TextBlock Text="远程联机" FontSize="20" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Theme.TextPrimary}"/>
+            <TextBlock Text="主机生成联机码后把码告诉副设备；副设备输入 8 位联机码即可接入，实现同屏双人游戏。"
+                       FontSize="13" Foreground="{DynamicResource Theme.TextSecondary}"
+                       TextWrapping="Wrap" Margin="0,6,0,0"/>
+
+            <!-- ============ 主机区 ============ -->
+            <Border Style="{StaticResource CardBorder}" Margin="0,20,0,0" Padding="16">
+                <StackPanel>
+                    <TextBlock Text="主机 · 生成联机码" FontSize="14" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Theme.TextPrimary}"/>
+                    <TextBlock Text="生成后等待副设备接入，配对成功即自动推流。"
+                               FontSize="12" Foreground="{DynamicResource Theme.TextSecondary}" Margin="0,4,0,0"/>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <Button x:Name="HostGenerateButton" Style="{StaticResource PrimaryButton}"
+                                Content="生成联机码" Height="36" Padding="20,0" Click="HostGenerateButton_Click"/>
+                        <Button x:Name="HostStopButton" Content="停止" Height="36" Padding="20,0"
+                                Margin="8,0,0,0" Click="HostStopButton_Click" IsEnabled="False"/>
+                    </StackPanel>
+
+                    <Border Background="{DynamicResource Theme.WindowBg}" CornerRadius="6" Padding="12" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="联机码" FontSize="12" Foreground="{DynamicResource Theme.TextSecondary}"/>
+                            <TextBlock x:Name="HostCodeText" Text="— — — — — — — — —"
+                                       FontFamily="Consolas" FontSize="28" FontWeight="Bold"
+                                       Foreground="{DynamicResource Theme.Accent}" Margin="0,4,0,0"/>
+                            <Button x:Name="HostCopyButton" Content="复制联机码" Height="32" Padding="14,0"
+                                    HorizontalAlignment="Left" Margin="0,8,0,0" Click="HostCopyButton_Click"/>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock x:Name="HostStatusText" Text="未启动" FontSize="13" FontWeight="SemiBold"
+                               TextWrapping="Wrap" Foreground="{DynamicResource Theme.TextPrimary}" Margin="0,12,0,0"/>
+                    <TextBlock x:Name="HostKeyText" Text="按键：无" FontSize="12"
+                               Foreground="{DynamicResource Theme.TextSecondary}" Margin="0,6,0,0"/>
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 从机区 ============ -->
+            <Border Style="{StaticResource CardBorder}" Margin="0,16,0,0" Padding="16">
+                <StackPanel>
+                    <TextBlock Text="从机 · 输入联机码" FontSize="14" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Theme.TextPrimary}"/>
+                    <TextBlock Text="输入主机生成的 8 位联机码，配对后在新标签页显示画面并操作。"
+                               FontSize="12" Foreground="{DynamicResource Theme.TextSecondary}" Margin="0,4,0,0"/>
+
+                    <Grid Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="ClientCodeBox" Height="36" FontSize="15" Padding="10,0"
+                                 VerticalContentAlignment="Center" MaxLength="8"/>
+                        <Button x:Name="ClientConnectButton" Grid.Column="1" Content="连接"
+                                Height="36" Margin="8,0,0,0" Padding="20,0"
+                                Style="{StaticResource PrimaryButton}" Click="ClientConnectButton_Click"/>
+                    </Grid>
+
+                    <TextBlock x:Name="ClientStatusText" Text="未连接" FontSize="13" FontWeight="SemiBold"
+                               TextWrapping="Wrap" Foreground="{DynamicResource Theme.TextPrimary}" Margin="0,12,0,0"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
