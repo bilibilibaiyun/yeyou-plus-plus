@@ -6,7 +6,7 @@
 
 **Windows Flash 页游浏览器 —— 真·Flash 内核 + 游戏变速齿轮，开箱即用**
 
-![Version](https://img.shields.io/badge/version-2.0.9-blue) ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey) ![Flash](https://img.shields.io/badge/Flash-34.0.0.330%20PPAPI-red) ![License](https://img.shields.io/badge/license-MIT-green)
+![Version](https://img.shields.io/badge/version-2.5.0-blue) ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey) ![Flash](https://img.shields.io/badge/Flash-34.0.0.330%20PPAPI-red) ![License](https://img.shields.io/badge/license-MIT-green)
 
 主页：快捷入口 + 必应搜索，一目了然
 
@@ -23,13 +23,51 @@
 - **真 Flash 内核**：内置 CEF 84（Chromium 84）+ Adobe Flash PPAPI 插件（34.0.0.330 x64），无需任何配置即可畅玩 4399 等平台的经典 Flash 页游（如造梦西游系列）
 - **游戏变速齿轮**：基于 MinHook 内联挂钩，锚定式缩放 6 个时间读取函数（timeGetTime、GetTickCount、GetTickCount64、GetSystemTimeAsFileTime、GetSystemTimePreciseAsFileTime、GetMessageTime），让 Flash 游戏逻辑变速，主界面与游戏副本内均稳定生效，0.5x ~ 5x 自由调速
 - **影子（小号多开）**：一键克隆当前页面到独立实例，Cookie / 缓存 / 会话完全隔离，大小号同屏双开
-- **远程同屏游戏（手机盒子）**：桌面端生成加密联机码，手机安装配套 Android 客户端（手机盒子）输入联机码即可连接，实时投屏 + 虚拟按键操作，实现「一人键盘 + 一人手机」的同屏双人游戏。按键大小 / 位置 / 透明度 / 映射键均可自定义，手机端内置「检测更新 / 选择版本」。支持**局域网直连**与**跨网络联机**（内置 EasyTier P2P 组网，手机在外也能连家里电脑；多协议 + 公共节点中继兜底，校园网等对称 NAT / 防火墙环境也能穿透）
+- **远程联机（跨设备同屏游戏）**：主机一键生成 **8 位数字联机码**，副设备（电脑或手机）输入联机码即可配对，游戏画面与操作数据经云中继服务器实时双向转发，实现「一人键盘 + 一人手机 / 电脑」的同屏双人游戏。无需公网 IP、无需路由器配置、无需 VPN，任意网络环境都能连。副设备支持**电脑连电脑**和**手机连电脑**两种形态，按键大小 / 位置 / 透明度 / 映射键均可自定义
 
 ## 📥 下载
 
 前往 [Releases](https://github.com/bilibilibaiyun/yeyou-plus-plus/releases) 页面下载 `YeyouPlusPlus_x.y.z_x64_Setup.exe`。
 
 > 标注「**稳定版**」的 Release 推荐普通用户下载；标注「**测试版**」的为开发中的版本，可能不稳定。
+
+## 🕹️ 远程联机（跨设备同屏游戏）
+
+远程联机让两台设备「同屏同玩」：主设备把游戏画面实时分享给副设备，副设备的操作实时回传主设备。
+
+### 工作原理
+
+通过云中继服务器做双向透明转发，无需公网 IP / 端口映射 / VPN：
+
+```
+主设备 ──(画面流)──► 云中继服务器 ──(画面流)──► 副设备
+副设备 ──(操作数据)─► 云中继服务器 ──(操作数据)─► 主设备
+```
+
+1. 主设备点「请求联机码」，服务器开放一个临时会话并下发 **8 位数字验证码**；
+2. 副设备输入这个 8 位码，两台设备经服务器配对成功；
+3. 主设备把游戏画面（H.264 视频帧）持续发给服务器，服务器转发给副设备；副设备的按键 / 鼠标操作经服务器回传主设备；
+4. 主设备结束远程联机或退出客户端后，服务器自动关闭该临时会话。
+
+### 作为主机（分享画面）
+
+1. 打开页游++，在左侧边栏点「**联机**」进入联机界面；
+2. 点「**请求联机码**」，得到 8 位数字验证码，把它告诉副设备；
+3. 副设备接入后，主设备游戏画面会自动开始分享（仅分享页游++的游戏窗口，不包含其它软件画面）。
+
+### 作为副设备（电脑连电脑）
+
+1. 在另一台电脑打开页游++，左侧边栏点「**联机**」；
+2. 在「**从机**」区输入 8 位联机码，点「连接」；
+3. 配对成功后自动新开一个标签页显示主机画面，键盘 / 鼠标操作实时透传回主机。
+
+### 作为副设备（手机连电脑）
+
+1. 手机安装配套客户端「**手机盒子**」（Releases 里的 `YeyouPlusPlus-PhoneBox_x.y.apk`）；
+2. 输入 8 位联机码连接；
+3. 手机实时显示主机画面，用虚拟按键操作，按键大小 / 位置 / 透明度 / 映射键均可自定义。
+
+> ℹ️ 手机端「直接玩 Flash」功能当前处于**内测阶段，功能仍在开发中**，兼容性约 8~9 成，个别复杂或冷门游戏可能异常。
 
 ## ⚡ 变速齿轮原理
 
@@ -69,6 +107,7 @@ dotnet build YeyouPlusPlus.csproj -c Release -p:Platform=x64
 cs/src/            C# WPF 源码（net462 + CefSharp 84）
 speedhack/         变速齿轮 DLL 源码（Rust + MinHook 内联挂钩）
 android/           手机盒子 Android 客户端源码（Kotlin）
+relay/             联机中继服务器源码（Go，云服务器部署）
 installer/         Inno Setup 打包脚本
 assets/icon/       应用图标
 docs/images/       截图
@@ -78,7 +117,8 @@ docs/images/       截图
 
 - C# WPF（.NET Framework 4.6.2）+ CefSharp 84（Chromium 84）
 - 变速齿轮：Rust + [MinHook](https://github.com/TsudaKageyu/minhook) 内联挂钩（hook 6 个时间读取函数）
-- 手机盒子：Android 原生 Kotlin（MediaCodec 硬解 + SurfaceView）+ 自研 UDP RTP 推流 + OpenH264 软编码
+- 手机盒子：Android 原生 Kotlin（MediaCodec 硬解 + SurfaceView）
+- 联机：云中继服务器（Go 静态编译）双向透明转发 + TCP 隧道帧流（H.264 Annex-B）+ 8 位数字码配对，OpenH264 软编解码
 - 打包：Inno Setup 7
 
 ## ⚠️ 免责声明
