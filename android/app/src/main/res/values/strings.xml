@@ -51,6 +51,7 @@
 
     <!-- Flash 浏览器 -->
     <string name="flash_entry">直接玩 Flash</string>
+    <string name="flash_beta_tag">当前内测中，功能仍在开发</string>
     <string name="flash_back">后退</string>
     <string name="flash_refresh">刷新</string>
     <string name="flash_address_hint">输入网址或搜索</string>

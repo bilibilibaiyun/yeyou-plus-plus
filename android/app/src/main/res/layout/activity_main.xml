@@ -76,6 +76,16 @@
                 android:background="@drawable/bg_join_input" />
 
             <TextView
+                android:id="@+id/flash_beta_tag"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="4dp"
+                android:text="@string/flash_beta_tag"
+                android:textColor="#FFC107"
+                android:textSize="12sp" />
+
+            <TextView
                 android:id="@+id/home_poem"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
