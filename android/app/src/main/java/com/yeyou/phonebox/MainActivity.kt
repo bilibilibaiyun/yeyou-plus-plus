@@ -23,6 +23,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import com.yeyou.phonebox.web.FlashBrowserActivity
 import java.io.File
 
 /**
@@ -44,6 +45,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private lateinit var homePage: View
     private lateinit var joinCodeInput: EditText
     private lateinit var connectButton: Button
+    private lateinit var flashEntryButton: Button
     private lateinit var homeSettingsButton: Button
 
     // 游戏页
@@ -94,6 +96,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         gamePage = findViewById(R.id.game_page)
         joinCodeInput = findViewById(R.id.join_code_input)
         connectButton = findViewById(R.id.connect_button)
+        flashEntryButton = findViewById(R.id.flash_entry_button)
         homeSettingsButton = findViewById(R.id.home_settings_button)
         surfaceView = findViewById(R.id.surface_view)
         gamepadView = findViewById(R.id.gamepad_view)
@@ -134,6 +137,9 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
         connectButton.setOnClickListener {
             handleJoinCode(joinCodeInput.text.toString().trim())
+        }
+        flashEntryButton.setOnClickListener {
+            startActivity(Intent(this, FlashBrowserActivity::class.java))
         }
         homeSettingsButton.setOnClickListener { showSettingsDialog() }
         settingsButton.setOnClickListener { enterEditMode() }

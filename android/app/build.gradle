@@ -11,8 +11,8 @@ android {
         applicationId "com.yeyou.phonebox"
         minSdk 24
         targetSdk 34
-        versionCode 16
-        versionName "2.5"
+        versionCode 17
+        versionName "2.6"
     }
 
     buildFeatures {
@@ -42,4 +42,6 @@ dependencies {
     // AndroidX 基础库（网络用 java.net，解码用 MediaCodec，无需第三方库）
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.appcompat:appcompat:1.7.0'
+    // Ruffle 注入式 Flash 播放：WebViewAssetLoader + addDocumentStartJavaScript
+    implementation 'androidx.webkit:webkit:1.11.0'
 }

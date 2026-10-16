@@ -49,5 +49,13 @@
                 <action android:name="android.net.VpnService" />
             </intent-filter>
         </service>
+
+        <!-- 直接玩 Flash（Ruffle 注入式浏览器） -->
+        <activity
+            android:name=".web.FlashBrowserActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:theme="@style/Theme.PhoneBox.Fullscreen" />
     </application>
 </manifest>

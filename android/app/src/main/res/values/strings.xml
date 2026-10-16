@@ -48,4 +48,12 @@
     <string name="update_tag_test">（测试版）</string>
     <string name="update_tag_stable">（稳定版）</string>
     <string name="update_current_mark"> [当前]</string>
+
+    <!-- Flash 浏览器 -->
+    <string name="flash_entry">直接玩 Flash</string>
+    <string name="flash_back">后退</string>
+    <string name="flash_refresh">刷新</string>
+    <string name="flash_address_hint">输入网址或搜索</string>
+    <string name="flash_favorite">收藏</string>
+    <string name="flash_home">主页</string>
 </resources>
