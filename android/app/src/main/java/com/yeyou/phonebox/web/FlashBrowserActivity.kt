@@ -79,11 +79,12 @@ class FlashBrowserActivity : AppCompatActivity() {
         webView.webChromeClient = WebChromeClient()
 
         // 在 document-start 一次性注册注入脚本（首次导航起即生效，无需每次 onPageStarted 重复注册）。
+        // allowedOriginRules 基于 origin 匹配，用 "*" 匹配所有来源；不能用 "*://*/*" 这类无效规则（会抛 IllegalArgumentException）。
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             WebViewCompat.addDocumentStartJavaScript(
                 webView,
                 RuffleConfig.buildInjectionScript(),
-                setOf("*://*/*")
+                setOf("*")
             )
         } else {
             AppLog.w("FlashBrowserActivity", "当前 WebView 不支持 DOCUMENT_START_SCRIPT")

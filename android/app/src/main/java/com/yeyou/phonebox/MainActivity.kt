@@ -399,39 +399,56 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     /**
      * 按视频宽高比调整 SurfaceView 尺寸，居中显示（四周留黑边），
-     * 避免 MediaCodec 把视频强制拉伸填满整个屏幕导致画面变形。
+     * 避免 MediaCodec 把视频强制拉伸填满整个屏幕导致画面变形 / 溢出。
+     *
+     * 关键：gamePage 在收到 Config 时可能尚未完成 measure/layout（width/height 为 0 或旧值），
+     * 直接用 post 会在布局前读到错误尺寸；这里既立即尝试，又注册 onLayoutChange 兜底，
+     * 确保在布局完成后按真实可用区域设置 SurfaceView 尺寸。
      */
     private fun adjustSurfaceAspect(videoW: Int, videoH: Int) {
         if (videoW <= 0 || videoH <= 0) {
             return
         }
-        gamePage.post {
-            val screenW = gamePage.width
-            val screenH = gamePage.height
-            if (screenW <= 0 || screenH <= 0) {
-                return@post
-            }
-            val videoRatio = videoW.toFloat() / videoH
-            val screenRatio = screenW.toFloat() / screenH
 
-            val targetW: Int
-            val targetH: Int
-            if (videoRatio > screenRatio) {
-                // 视频比屏幕更「扁」：以屏宽为准，按比例收窄高度
-                targetW = screenW
-                targetH = (screenW / videoRatio).toInt()
-            } else {
-                // 视频比屏幕更「高」：以屏高为准，按比例收窄宽度
-                targetH = screenH
-                targetW = (screenH * videoRatio).toInt()
+        val listener = object : View.OnLayoutChangeListener {
+            override fun onLayoutChange(
+                v: View?, l: Int, t: Int, r: Int, b: Int,
+                ol: Int, ot: Int, or: Int, ob: Int
+            ) {
+                gamePage.removeOnLayoutChangeListener(this)
+                applySurfaceAspect(videoW, videoH)
             }
-
-            val lp = surfaceView.layoutParams as FrameLayout.LayoutParams
-            lp.width = targetW
-            lp.height = targetH
-            lp.gravity = Gravity.CENTER
-            surfaceView.layoutParams = lp
         }
+        gamePage.addOnLayoutChangeListener(listener)
+        applySurfaceAspect(videoW, videoH)
+    }
+
+    private fun applySurfaceAspect(videoW: Int, videoH: Int) {
+        val screenW = gamePage.width
+        val screenH = gamePage.height
+        if (screenW <= 0 || screenH <= 0) {
+            return
+        }
+        val videoRatio = videoW.toFloat() / videoH
+        val screenRatio = screenW.toFloat() / screenH
+
+        val targetW: Int
+        val targetH: Int
+        if (videoRatio > screenRatio) {
+            // 视频比屏幕更「扁」：以屏宽为准，按比例收窄高度
+            targetW = screenW
+            targetH = (screenW / videoRatio).toInt()
+        } else {
+            // 视频比屏幕更「高」：以屏高为准，按比例收窄宽度
+            targetH = screenH
+            targetW = (screenH * videoRatio).toInt()
+        }
+
+        val lp = surfaceView.layoutParams as FrameLayout.LayoutParams
+        lp.width = targetW
+        lp.height = targetH
+        lp.gravity = Gravity.CENTER
+        surfaceView.layoutParams = lp
     }
 
     private fun showHomePage() {
