@@ -166,13 +166,15 @@ namespace YeyouPlusPlus.PhoneBox
             {
                 try
                 {
-                    var frame = CaptureWindow != IntPtr.Zero
-                        ? ScreenCapturer.Capture(CaptureWindow)
-                        : ScreenCapturer.Capture(
-                            Screen.PrimaryScreen.Bounds.X,
-                            Screen.PrimaryScreen.Bounds.Y,
-                            Screen.PrimaryScreen.Bounds.Width,
-                            Screen.PrimaryScreen.Bounds.Height);
+                    // 只抓游戏窗口（页游++），没有句柄时跳过本帧，绝不回退抓整个屏幕
+                    // （否则会把主机上的其他软件画面一并分享出去）。
+                    if (CaptureWindow == IntPtr.Zero)
+                    {
+                        Thread.Sleep(50);
+                        continue;
+                    }
+
+                    var frame = ScreenCapturer.Capture(CaptureWindow);
 
                     frameCount++;
                     if (frameCount == 1 || frameCount % 60 == 0)

@@ -34,6 +34,13 @@ namespace YeyouPlusPlus.PhoneBox
         }
 
         [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int X;
+            public int Y;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
         private struct BITMAPINFOHEADER
         {
             public uint biSize;
@@ -66,6 +73,12 @@ namespace YeyouPlusPlus.PhoneBox
 
         [DllImport("user32.dll")]
         private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll")]
+        private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll")]
+        private static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
 
         [DllImport("gdi32.dll")]
         private static extern IntPtr CreateCompatibleDC(IntPtr hdc);
@@ -190,17 +203,20 @@ namespace YeyouPlusPlus.PhoneBox
         }
 
         /// <summary>
-        /// 抓取指定窗口一帧并返回独立的 24bpp RGB Bitmap。
+        /// 抓取指定窗口的客户区一帧并返回独立的 24bpp RGB Bitmap。
+        /// 用 GetClientRect 抓客户区（不含边框/标题栏），避免画面偏移；
         /// 窗口句柄无效或取不到尺寸时，回退抓主显示器全屏。
         /// </summary>
         public static Bitmap Capture(IntPtr windowHandle)
         {
             if (windowHandle != IntPtr.Zero)
             {
-                RECT rect;
-                if (GetWindowRect(windowHandle, out rect) && rect.Width > 0 && rect.Height > 0)
+                RECT client;
+                if (GetClientRect(windowHandle, out client) && client.Width > 0 && client.Height > 0)
                 {
-                    return Capture(rect.Left, rect.Top, rect.Width, rect.Height);
+                    var pt = new POINT { X = 0, Y = 0 };
+                    ClientToScreen(windowHandle, ref pt);
+                    return Capture(pt.X, pt.Y, client.Width, client.Height);
                 }
             }
 

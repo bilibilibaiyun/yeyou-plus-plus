@@ -127,8 +127,26 @@ namespace YeyouPlusPlus
                 RestoreVideoThemeState();
             };
 
-            // 远程联机面板：注入抓屏目标（当前游戏标签页句柄）+ 订阅从机标签请求。
-            PhoneBoxPanel.CaptureWindowProvider = () => CurrentHost != null ? CurrentHost.Handle : IntPtr.Zero;
+            // 远程联机面板：注入抓屏目标 + 订阅从机标签请求。
+            // 推流前切回浏览器视图并强制布局，确保游戏标签的 CEF 窗口可见/已重建，
+            // 避免抓屏拿不到游戏窗口而回退抓整个屏幕（把其他软件也分享出去）。
+            PhoneBoxPanel.CaptureWindowProvider = () =>
+            {
+                Action ensureVisible = () =>
+                {
+                    ShowView("browser");
+                    UpdateLayout();
+                };
+                if (Dispatcher.CheckAccess())
+                {
+                    ensureVisible();
+                }
+                else
+                {
+                    Dispatcher.Invoke(ensureVisible);
+                }
+                return CurrentHost != null ? CurrentHost.Handle : IntPtr.Zero;
+            };
             PhoneBoxPanel.ClientTabRequested += OpenClientTab;
 
             RenderQuickLinks();

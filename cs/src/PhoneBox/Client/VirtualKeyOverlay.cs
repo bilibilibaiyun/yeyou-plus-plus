@@ -292,19 +292,14 @@ namespace YeyouPlusPlus.PhoneBox.Client
 
         private static int MapPhysicalKey(Key key)
         {
-            switch (key)
+            // 电脑端从机：透传键盘按键（不做玩家 2 键位白名单映射），按什么键就发什么键。
+            try
             {
-                case Key.Up: return 38;
-                case Key.Down: return 40;
-                case Key.Left: return 37;
-                case Key.Right: return 39;
-                case Key.Z: return 90;
-                case Key.X: return 88;
-                case Key.C: return 67;
-                case Key.V: return 86;
-                case Key.Space: return 32;
-                case Key.Enter: return 13;
-                default: return 0;
+                return KeyInterop.VirtualKeyFromKey(key);
+            }
+            catch
+            {
+                return 0;
             }
         }
 
