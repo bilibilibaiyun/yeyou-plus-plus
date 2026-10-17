@@ -23,6 +23,14 @@ namespace YeyouPlusPlus
                 disableDefaultHandling = true;
                 return new CancelHandler();
             }
+
+            // 主文档（HTML）导航：注入 Flash 兼容脚本，伪造 navigator.plugins / mimeTypes，
+            // 让 swfobject 等 Flash 检测通过（解决百田·奥奇传说等「当前浏览器不支持」问题）。
+            // 是否注入由 FlashCompatInjector 依据响应 MimeType 是否为 text/html 决定。
+            if (isNavigation)
+            {
+                return new FlashCompatInjector();
+            }
             return null;
         }
 

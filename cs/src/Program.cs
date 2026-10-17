@@ -91,6 +91,9 @@ namespace YeyouPlusPlus
                 BrowserSubprocessPath = Path.Combine(baseDir, "CefSharp.BrowserSubprocess.exe"),
                 // Accept-Language 设为中文优先，避免部分国内验证码服务因默认 en-US 拒绝出图。
                 AcceptLanguageList = "zh-CN,zh;q=0.9,en;q=0.8",
+                // 显式指定标准 Chrome UA（与内核版本一致），避免 CefSharp 默认 UA 被部分网站
+                // 识别为「非正常浏览器」而触发拦截 / 提示。
+                UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.105 Safari/537.36",
             };
 
             // 影子功能依赖：所有 profile 缓存目录的公共根目录。
