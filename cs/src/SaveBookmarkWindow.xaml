@@ -1,0 +1,41 @@
+<Window x:Class="YeyouPlusPlus.SaveBookmarkWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="收藏当前页" Height="470" Width="480"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False"
+        Background="{DynamicResource Theme.WindowBg}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        Icon="pack://siteoforigin:,,,/Assets/app-64.png">
+    <StackPanel Margin="20">
+        <TextBlock Text="名称" FontSize="12" Foreground="{DynamicResource Theme.TextSecondary}"/>
+        <TextBox x:Name="NameBox" Height="32" Margin="0,6,0,0"/>
+
+        <TextBlock Text="网址" FontSize="12" Margin="0,14,0,0" Foreground="{DynamicResource Theme.TextSecondary}"/>
+        <TextBlock x:Name="UrlText" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0"
+                   Foreground="{DynamicResource Theme.TextSecondary}"/>
+
+        <TextBlock Text="收藏位置" FontSize="13" FontWeight="SemiBold" Margin="0,18,0,8"
+                   Foreground="{DynamicResource Theme.TextPrimary}"/>
+
+        <RadioButton x:Name="TopRadio" Content="收藏到书签栏顶层" GroupName="Loc" IsChecked="True"
+                     Checked="LocRadio_Checked"/>
+        <RadioButton x:Name="ExistingRadio" Content="选择已有文件夹" GroupName="Loc"
+                     Checked="LocRadio_Checked"/>
+        <ComboBox x:Name="FolderCombo" Height="32" Margin="22,6,0,0" IsEnabled="False"/>
+        <RadioButton x:Name="NewRadio" Content="新建文件夹后收藏" GroupName="Loc"
+                     Checked="LocRadio_Checked"/>
+        <TextBox x:Name="NewFolderBox" Height="32" Margin="22,6,0,0" IsEnabled="False"
+                 ToolTip="新建的文件夹将创建在顶层"/>
+
+        <TextBlock x:Name="ExistingHint" Text="该页面已收藏" FontSize="12"
+                   Foreground="{DynamicResource Theme.Accent}" Margin="0,14,0,0" Visibility="Collapsed"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button x:Name="RemoveButton" Content="移除收藏" Width="90" Height="32" Margin="0,0,8,0"
+                    Visibility="Collapsed" Click="Remove_Click"/>
+            <Button Content="取消" Width="80" Height="32" Click="Cancel_Click"/>
+            <Button Content="保存" Width="80" Height="32" Margin="8,0,0,0"
+                    Style="{StaticResource PrimaryButton}" Click="Save_Click"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

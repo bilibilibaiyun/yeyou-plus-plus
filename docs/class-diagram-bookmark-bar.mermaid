@@ -1,0 +1,61 @@
+classDiagram
+    direction TB
+
+    class FavoriteNode {
+        +FavoriteNodeKind Kind
+        +string Name
+        +string Url
+        +List~FavoriteNode~ Children
+    }
+    class Favorites {
+        -List~FavoriteNode~ _roots
+        +IReadOnlyList~FavoriteNode~ Roots$
+        +event Action Changed$
+        +Contains(string url) bool$
+        +FindBookmark(string url) FavoriteNode$
+        +AddBookmark(url, name, folder) void$
+        +AddFolder(name, parent) FavoriteNode$
+        +Remove(node) void$
+        +RemoveByUrl(url) void$
+        +Move(node, newParent) void$
+        +Rename(node, name) void$
+        +GetAllFolders() List~FavoriteNode~$
+        +CountBookmarks(node) int$
+        +Reload() void$
+        -Load() List~FavoriteNode~$
+        -Save() void$
+        -Migrate(string json) List~FavoriteNode~$
+        -Normalize(nodes) void
+    }
+    class BookmarkBar {
+        +event Action~string~ NavigateRequested
+        +Refresh() void
+        -RenderRoots() void
+        -OpenFolderMenu(FavoriteNode folder, Button btn) void
+    }
+    class SaveBookmarkWindow {
+        +FavoriteNode SelectedFolder
+        +string NewFolderName
+        +string BookmarkName
+        +bool RemoveExisting
+        -LoadFolders() void
+    }
+    class FavoritesWindow {
+        +event Action~string~ NavigateRequested
+        -RefreshTree() void
+        -NewFolder() void
+        -Rename() void
+        -Move() void
+        -DeleteWithConfirm() void
+    }
+    class AppSettings {
+        +bool ShowBookmarkBar
+    }
+
+    Favorites --> FavoriteNode : "树根"
+    BookmarkBar --> Favorites : "读 Roots / 订阅 Changed"
+    SaveBookmarkWindow --> Favorites : "读文件夹列表"
+    FavoritesWindow --> Favorites : "树形增删改移"
+    MainWindow --> BookmarkBar : "宿主 / 刷新 / 导航"
+    MainWindow --> SaveBookmarkWindow : "收藏弹窗"
+    MainWindow --> FavoritesWindow : "打开管理器"

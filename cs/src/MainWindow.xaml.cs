@@ -136,6 +136,12 @@ namespace YeyouPlusPlus
             // 站点图标下载完成后刷新快捷入口。
             QuickLinks.IconUpdated += OnQuickLinkIconUpdated;
 
+            // 收藏数据变更 → 刷新星标状态（书签栏自身也订阅 Changed 做即时刷新）。
+            Favorites.Changed += OnFavoritesChanged;
+
+            // 书签栏点击 → 新标签打开。
+            BookmarkBar.NavigateRequested += url => OpenInTab(url);
+
             // 初始创建一个空标签（启动仍显示主页）。
             CreateTab();
             activeTabIndex = 0;
@@ -170,6 +176,7 @@ namespace YeyouPlusPlus
             PhoneBoxPanel.ClientTabRequested += OpenClientTab;
 
             RenderQuickLinks();
+            BookmarkBar.Refresh();
             RefreshSettingsView();
             UpdateThemeToggleIcon();
 
@@ -523,6 +530,8 @@ namespace YeyouPlusPlus
             BrowserView.Visibility = view == "browser" ? Visibility.Visible : Visibility.Collapsed;
             SettingsPanel.Visibility = view == "settings" ? Visibility.Visible : Visibility.Collapsed;
             PhoneBoxPanel.Visibility = view == "phonebox" ? Visibility.Visible : Visibility.Collapsed;
+
+            ApplyBookmarkBarVisibility();
 
             NavHomeButton.Tag = view == "home" ? "selected" : null;
             NavSettingsButton.Tag = view == "settings" ? "selected" : null;
@@ -979,15 +988,26 @@ namespace YeyouPlusPlus
                 SetStatus("当前页面无法收藏");
                 return;
             }
-            if (Favorites.Contains(url))
+
+            var dlg = new SaveBookmarkWindow(url, h.Title) { Owner = this };
+            if (dlg.ShowDialog() == true)
             {
-                Favorites.Remove(url);
-                SetStatus("已取消收藏");
-            }
-            else
-            {
-                Favorites.Add(url, h.Title ?? url);
-                SetStatus("已收藏");
+                if (dlg.RemoveExisting)
+                {
+                    Favorites.RemoveByUrl(url);
+                    SetStatus("已取消收藏");
+                }
+                else
+                {
+                    var folder = dlg.SelectedFolder;
+                    if (!string.IsNullOrEmpty(dlg.NewFolderName))
+                    {
+                        // P0：新建文件夹只建到顶层（选父级放 P1）。
+                        folder = Favorites.AddFolder(dlg.NewFolderName, null);
+                    }
+                    Favorites.AddBookmark(url, dlg.BookmarkName, folder);
+                    SetStatus("已收藏");
+                }
             }
             UpdateFavoriteButton();
         }
@@ -1001,6 +1021,31 @@ namespace YeyouPlusPlus
             FavoriteButton.Foreground = fav
                 ? (Brush)FindResource("Theme.Accent")
                 : (Brush)FindResource("Theme.TextPrimary");
+        }
+
+        private void OnFavoritesChanged()
+        {
+            Dispatcher.InvokeAsync(() => UpdateFavoriteButton());
+        }
+
+        /// <summary>根据当前视图与「显示书签栏」开关，决定书签栏可见性。</summary>
+        private void ApplyBookmarkBarVisibility()
+        {
+            bool show = AppSettingsStore.Current.ShowBookmarkBar;
+            bool inMainView = HomePanel.Visibility == Visibility.Visible ||
+                              BrowserView.Visibility == Visibility.Visible;
+            BookmarkBar.Visibility = show && inMainView ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void ShowBookmarkBarCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (ShowBookmarkBarCheckBox == null)
+            {
+                return;
+            }
+            AppSettingsStore.Current.ShowBookmarkBar = ShowBookmarkBarCheckBox.IsChecked == true;
+            AppSettingsStore.Save();
+            ApplyBookmarkBarVisibility();
         }
 
         private void FavoritesButton_Click(object sender, RoutedEventArgs e)
@@ -1548,6 +1593,7 @@ namespace YeyouPlusPlus
             DataDirBox.Text = AppPaths.DataDir;
             DownloadDirBox.Text = AppPaths.DownloadDir;
             CacheThresholdBox.Text = AppSettingsStore.Current.CacheCleanThresholdMB.ToString();
+            ShowBookmarkBarCheckBox.IsChecked = AppSettingsStore.Current.ShowBookmarkBar;
             CurrentVersionText.Text = "当前版本 v" + UpdateChecker.CurrentVersion;
             if (releases != null)
             {
@@ -1928,6 +1974,7 @@ namespace YeyouPlusPlus
             PhoneBoxPanel.Shutdown();
 
             QuickLinks.IconUpdated -= OnQuickLinkIconUpdated;
+            Favorites.Changed -= OnFavoritesChanged;
             speedTimer?.Stop();
             cacheTimer?.Stop();
             titleTimer?.Stop();

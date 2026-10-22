@@ -29,6 +29,9 @@ namespace YeyouPlusPlus
 
         /// <summary>缓存自动清理阈值（MB），默认 800，下限 100。</summary>
         public int CacheCleanThresholdMB { get; set; } = 800;
+
+        /// <summary>是否显示书签栏（默认显示）。</summary>
+        public bool ShowBookmarkBar { get; set; } = true;
     }
 
     public static class AppSettingsStore

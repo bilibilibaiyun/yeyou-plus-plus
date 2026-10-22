@@ -130,8 +130,17 @@
                 </DockPanel>
             </Border>
 
-            <!-- 内容区（主页 / 浏览器 / 设置 三视图） -->
+            <!-- 内容区（书签栏 + 主页 / 浏览器 / 设置 三视图） -->
             <Grid Grid.Row="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- 书签栏（主页/浏览器视图顶部通栏，设置/联机视图隐藏） -->
+                <local:BookmarkBar x:Name="BookmarkBar" Grid.Row="0" Visibility="Collapsed"/>
+
+                <Grid Grid.Row="1">
                 <!-- 『主页』 -->
                 <Grid x:Name="HomePanel">
                     <Viewbox x:Name="HomeViewbox" Stretch="Uniform"
@@ -329,6 +338,17 @@
                             </StackPanel>
                         </Border>
 
+                        <TextBlock Text="界面" FontSize="13" FontWeight="SemiBold" Margin="0,20,0,8"
+                                   Foreground="{DynamicResource Theme.TextSecondary}"/>
+                        <Border Style="{StaticResource CardBorder}">
+                            <StackPanel>
+                                <CheckBox x:Name="ShowBookmarkBarCheckBox" Content="显示书签栏"
+                                          FontSize="13" Foreground="{DynamicResource Theme.TextPrimary}"
+                                          Checked="ShowBookmarkBarCheckBox_Changed"
+                                          Unchecked="ShowBookmarkBarCheckBox_Changed"/>
+                            </StackPanel>
+                        </Border>
+
                         <TextBlock Text="更新（检查更新仅检测稳定版；版本列表包含全部版本）" FontSize="13" FontWeight="SemiBold"
                                    Margin="0,20,0,8" Foreground="{DynamicResource Theme.TextSecondary}"/>
                         <Border Style="{StaticResource CardBorder}">
@@ -379,6 +399,7 @@
                     </StackPanel>
                 </ScrollViewer>
 
+                </Grid>
             </Grid>
 
             <!-- 状态栏 -->

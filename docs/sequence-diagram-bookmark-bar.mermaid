@@ -1,0 +1,63 @@
+sequenceDiagram
+    autonumber
+    participant FS as Favorites(数据层)
+    participant FJ as favorites.json
+    participant BB as BookmarkBar
+    participant MW as MainWindow(UI)
+
+    Note over FS,FJ: 启动：旧数据迁移 + 渲染
+    MW->>FS: 静态构造触发 Load()
+    FS->>FJ: 读文本
+    alt 新格式
+        FS->>FS: Deserialize<List<FavoriteNode>>
+    else 旧扁平 {Name,Url}
+        FS->>FJ: Deserialize<List<FavoriteItem>> → 平铺为顶层 Bookmark → Save() 写回新格式
+    end
+    FS->>FS: Normalize(Children 非空 / 丢弃非法节点)
+    MW->>BB: Refresh() → 渲染顶层书签+文件夹
+
+---
+
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant MW as MainWindow(UI)
+    participant SW as SaveBookmarkWindow
+    participant FS as Favorites
+    participant BB as BookmarkBar
+
+    U->>MW: 点击「收藏当前页」
+    MW->>SW: ShowDialog(url, title)
+    U->>SW: 选①顶层 / ②已有文件夹 / ③新建文件夹名
+    U->>SW: 保存
+    SW-->>MW: SelectedFolder / NewFolderName / BookmarkName
+    alt ③ 新建文件夹
+        MW->>FS: AddFolder(name, parent) → folder
+    end
+    MW->>FS: AddBookmark(url, name, folder)
+    FS->>FS: Save(favorites.json) + Changed()
+    FS-->>BB: Changed → Dispatcher → Refresh()
+    MW->>MW: UpdateFavoriteButton()（实心星）
+
+---
+
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant BB as BookmarkBar
+    participant MW as MainWindow(UI)
+    participant FW as FavoritesWindow
+
+    U->>BB: 点击书签项
+    BB->>MW: NavigateRequested(url)
+    MW->>MW: OpenInTab(url)
+
+    U->>BB: 点击文件夹项
+    BB->>BB: ContextMenu.IsOpen = true（下拉，可递归子菜单，浮于 CEF 之上）
+    U->>BB: 点击子菜单书签
+    BB->>MW: NavigateRequested(url)
+
+    Note over FW,BB: 删除文件夹级联确认
+    U->>FW: 右键文件夹 → 删除
+    FW->>FW: CountBookmarks(folder)=N → 二次确认「删除 N 个书签?」
+    FW->>BB: Favorites.Remove(folder) → Changed → 书签栏即时刷新
