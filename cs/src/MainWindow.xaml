@@ -37,6 +37,8 @@
                     <TextBlock x:Name="SidebarTitle" Text="页游++" FontSize="15" FontWeight="Bold"
                                VerticalAlignment="Center" Margin="9,0,0,0"
                                Foreground="{DynamicResource Theme.TextPrimary}"/>
+                    <TextBlock x:Name="FpsText" Text="0 FPS" FontSize="12" FontWeight="Bold"
+                               VerticalAlignment="Center" Margin="8,0,0,0" Foreground="#FF4D4F"/>
                 </StackPanel>
 
                 <Button x:Name="ToggleSidebarButton" DockPanel.Dock="Bottom"

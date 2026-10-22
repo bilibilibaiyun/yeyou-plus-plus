@@ -161,7 +161,10 @@ namespace YeyouPlusPlus
 
         private void UpdateTitle()
         {
-            Title = string.Format("页游++   {0} FPS   ｜   缓存 {1}", fps, FormatBytes(lastCacheSize));
+            // 帧率移到侧边栏顶部红色显示（标题栏文字颜色受系统控制、无法单独改红），
+            // 标题栏只保留缓存量。
+            Title = string.Format("页游++   ｜   缓存 {0}", FormatBytes(lastCacheSize));
+            FpsText.Text = fps + " FPS";
         }
 
         // ================= 标签系统 =================
