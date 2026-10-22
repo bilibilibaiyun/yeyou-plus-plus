@@ -18,9 +18,9 @@
     <StartupObject>YeyouPlusPlus.Program</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Version>2.5.3</Version>
-    <AssemblyVersion>2.5.3.0</AssemblyVersion>
-    <FileVersion>2.5.3.0</FileVersion>
+    <Version>2.5.4</Version>
+    <AssemblyVersion>2.5.4.0</AssemblyVersion>
+    <FileVersion>2.5.4.0</FileVersion>
     <ApplicationIcon>..\..\assets\icon\app.ico</ApplicationIcon>
   </PropertyGroup>
 
@@ -38,6 +38,8 @@
     <Reference Include="System.Net.Http" />
     <!-- Base62 联机码编码使用 BigInteger。 -->
     <Reference Include="System.Numerics" />
+    <!-- DPAPI（ProtectedData）位于 System.Security 程序集，net462 SDK 风格工程需显式引用。 -->
+    <Reference Include="System.Security" />
   </ItemGroup>
 
   <ItemGroup>

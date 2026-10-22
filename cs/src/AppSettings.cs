@@ -26,6 +26,9 @@ namespace YeyouPlusPlus
 
         /// <summary>视频背景隐藏主题是否激活（关闭软件重开后恢复视频背景）。</summary>
         public bool VideoThemeActive { get; set; }
+
+        /// <summary>缓存自动清理阈值（MB），默认 800，下限 100。</summary>
+        public int CacheCleanThresholdMB { get; set; } = 800;
     }
 
     public static class AppSettingsStore

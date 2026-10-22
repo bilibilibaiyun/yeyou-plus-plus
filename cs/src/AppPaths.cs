@@ -88,5 +88,17 @@ namespace YeyouPlusPlus
                 return dir;
             }
         }
+
+        /// <summary>浏览历史记录数据文件（JSON 单文件，随数据目录迁移）。</summary>
+        public static string HistoryFilePath
+        {
+            get { return Path.Combine(DataDir, "history.json"); }
+        }
+
+        /// <summary>密码管理器数据文件（DPAPI 加密，明文不落盘）。</summary>
+        public static string PasswordsFilePath
+        {
+            get { return Path.Combine(DataDir, "passwords.json"); }
+        }
     }
 }

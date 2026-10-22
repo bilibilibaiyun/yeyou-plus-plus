@@ -15,6 +15,7 @@ namespace YeyouPlusPlus
     public class BrowserHost : HwndHost, ILifeSpanHandler
     {
         private readonly ChromiumWebBrowser browser;
+        private readonly PasswordFormBridge bridge;
         private string title;
         private string pendingUrl;
         private double pendingZoomPercent = 100;
@@ -24,6 +25,10 @@ namespace YeyouPlusPlus
         public event EventHandler LoadingStateChanged;
         /// <summary>网页请求在新窗口（target=_blank / window.open）打开时触发，参数为目标 URL。</summary>
         public event Action<string> PopupRequested;
+        /// <summary>登录表单提交捕获（username, password, origin, actionUrl），已在 UI 线程触发。</summary>
+        public event Action<string, string, string, string> LoginCaptured;
+        /// <summary>输入框聚焦（origin, rectJson），已在 UI 线程触发。</summary>
+        public event Action<string, string> LoginFieldFocused;
 
         public string Address => browser.Address;
         public string Title => title;
@@ -63,6 +68,12 @@ namespace YeyouPlusPlus
 
             // 下载文件保存到设置的下载目录。
             browser.DownloadHandler = new BrowserDownloadHandler();
+
+            // 密码桥：必须在 CreateControl() 之前注册（与 handler 时序同理），否则 JS 绑定失败。
+            // 显式关闭驼峰命名，保证 JS 侧方法名与 C# 方法名一致（LoginCaptured / LoginFieldFocused）。
+            bridge = new PasswordFormBridge(this);
+            browser.JavascriptObjectRepository.Register("yppBridge", bridge, isAsync: true,
+                new BindingOptions { CamelCaseJavascriptNames = false });
 
             // 关键：CreateControl() 会触发底层浏览器创建，必须在所有 handler 都挂载完成后再调用，
             // 否则此时 handler 仍是默认值，之后再赋值不会生效（会导致诊断日志/请求拦截失效）。
@@ -126,6 +137,11 @@ namespace YeyouPlusPlus
 
         private void OnBrowserLoadingStateChanged(object sender, LoadingStateChangedEventArgs e)
         {
+            if (!e.IsLoading)
+            {
+                // 页面加载完成后注入登录捕获/焦点上报脚本（脚本自身幂等）。
+                InjectPasswordScript();
+            }
             Dispatcher.InvokeAsync(() => LoadingStateChanged?.Invoke(this, EventArgs.Empty));
         }
 
@@ -191,6 +207,76 @@ namespace YeyouPlusPlus
             {
                 pendingZoomPercent = percent;
             }
+        }
+
+        /// <summary>注入登录捕获/焦点上报脚本（脚本自身幂等）。</summary>
+        private void InjectPasswordScript()
+        {
+            ExecuteJavaScriptAsync(PasswordScripts.Inject);
+        }
+
+        /// <summary>把脚本发往主 frame 执行（页面加载完成后使用），失败静默忽略。</summary>
+        public void ExecuteJavaScriptAsync(string script)
+        {
+            if (string.IsNullOrEmpty(script))
+            {
+                return;
+            }
+            try
+            {
+                if (browser.IsDisposed || !browser.IsBrowserInitialized)
+                {
+                    return;
+                }
+                var frame = browser.GetMainFrame();
+                if (frame == null)
+                {
+                    return;
+                }
+                // CefSharp 84 的 IFrame.ExecuteJavaScriptAsync 返回 void（fire-and-forget）。
+                frame.ExecuteJavaScriptAsync(script);
+            }
+            catch
+            {
+                // 忽略注入失败。
+            }
+        }
+
+        /// <summary>把视口坐标（CSS 像素，相对浏览器控件左上角）换算为屏幕物理像素。</summary>
+        public Point ViewportToScreen(double x, double y)
+        {
+            try
+            {
+                if (!browser.IsDisposed && browser.IsHandleCreated)
+                {
+                    var p = browser.PointToScreen(new System.Drawing.Point(
+                        (int)Math.Round(x), (int)Math.Round(y)));
+                    return new Point(p.X, p.Y);
+                }
+            }
+            catch
+            {
+                // 回退原始坐标。
+            }
+            return new Point(x, y);
+        }
+
+        /// <summary>JS 桥回传：触发 LoginCaptured 事件（已在 UI 线程）。</summary>
+        public void RaiseLoginCaptured(string username, string password, string origin, string actionUrl)
+        {
+            LoginCaptured?.Invoke(username, password, origin, actionUrl);
+        }
+
+        /// <summary>JS 桥回传：触发 LoginFieldFocused 事件（已在 UI 线程）。</summary>
+        public void RaiseLoginFieldFocused(string origin, string rectJson)
+        {
+            LoginFieldFocused?.Invoke(origin, rectJson);
+        }
+
+        /// <summary>回填账号/密码到当前页面（不自动提交）。</summary>
+        public void FillPassword(string username, string password)
+        {
+            ExecuteJavaScriptAsync(PasswordScripts.BuildFillScript(username, password));
         }
 
         // ---- ILifeSpanHandler：把新窗口请求转成新标签页打开 ----

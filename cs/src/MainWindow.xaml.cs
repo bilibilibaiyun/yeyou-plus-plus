@@ -12,16 +12,13 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using CefSharp;
+using Newtonsoft.Json.Linq;
 using YeyouPlusPlus.PhoneBox;
 
 namespace YeyouPlusPlus
 {
     public partial class MainWindow : Window
     {
-        // 缓存自动清理阈值（字节），便于调整。
-        private const long CacheWarningBytes = 400L * 1024 * 1024; // 400MB 临界值
-        private const long CacheDangerBytes = 800L * 1024 * 1024;  // 800MB 危险值
-
         /// <summary>一个标签页（浏览器标签，或电脑连电脑的从机画面标签）。</summary>
         private class BrowserTab
         {
@@ -29,6 +26,7 @@ namespace YeyouPlusPlus
             public PhoneBoxClientView ClientView; // 从机画面标签（非浏览器）
             public string Title;
             public bool HasNavigated; // 是否已真正导航过（非 about:blank）
+            public bool IsShadow;     // 影子标签（独立 RequestContext，历史不记录）
             public bool IsClient { get { return ClientView != null; } }
         }
 
@@ -38,8 +36,9 @@ namespace YeyouPlusPlus
         private readonly DispatcherTimer speedTimer;
         private readonly DispatcherTimer cacheTimer;
         private readonly DispatcherTimer titleTimer;
-        private bool cacheCheckRunning;
         private long lastCacheSize;
+        private PasswordFillPopup passwordFillPopup;
+        private BrowserHost passwordFillHost;
         private int frameCount;
         private int fps;
         private bool sidebarCollapsed;
@@ -48,6 +47,21 @@ namespace YeyouPlusPlus
         private readonly DispatcherTimer zoomDebounce;
         private double pendingZoomPercent = 100;
         private bool shadowSidebarExpanded;
+
+        // ===== 底部「操作小技巧」轮换提示条 =====
+        private static readonly string[] OperationTips =
+        {
+            "主页图标连点 5 次，解锁隐藏的视频背景主题",
+            "工具栏「变速」可让游戏 0.5x ~ 5x 变速",
+            "「影子」可同屏小号多开，账号互不干扰",
+            "侧边栏「联机」生成 8 位码，可与手机或另一台电脑同屏",
+            "地址栏输入关键词按回车，即可搜索",
+            "点星标收藏当前页，收藏夹随时找回",
+            "右上角可切换日间 / 夜间模式",
+            "哔哩哔哩健谈的白云是最帅的up主"
+        };
+        private readonly DispatcherTimer tipsTimer;
+        private int tipsIndex;
 
         /// <summary>远程联机面板（主窗口内视图，合并主机 + 从机）。</summary>
         // PhoneBoxPanel 控件在 MainWindow.xaml 中以 x:Name="PhoneBoxPanel" 声明，由 InitializeComponent 生成。
@@ -88,6 +102,12 @@ namespace YeyouPlusPlus
             cacheTimer.Tick += CacheTimer_Tick;
             cacheTimer.Start();
             CacheTimer_Tick(null, EventArgs.Empty);
+
+            // 底部操作小技巧：每 20 秒轮换一条，启动即显示第一条。
+            tipsTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
+            tipsTimer.Tick += (s, e) => ShowNextTip();
+            tipsTimer.Start();
+            ShowNextTip();
 
             // 帧率统计 + 标题刷新（每秒）。
             CompositionTarget.Rendering += (s, e) => frameCount++;
@@ -167,6 +187,18 @@ namespace YeyouPlusPlus
             FpsText.Text = fps + " FPS";
         }
 
+        /// <summary>轮换显示下一条操作小技巧（索引循环取模）。</summary>
+        private void ShowNextTip()
+        {
+            if (OperationTips.Length == 0)
+            {
+                TipsText.Text = string.Empty;
+                return;
+            }
+            TipsText.Text = OperationTips[tipsIndex % OperationTips.Length];
+            tipsIndex++;
+        }
+
         // ================= 标签系统 =================
 
         private int CreateTab(string initialUrl = "about:blank", IRequestContext requestContext = null)
@@ -176,11 +208,16 @@ namespace YeyouPlusPlus
             var host = new BrowserHost(initialUrl, requestContext);
             var tab = new BrowserTab { Host = host };
             tab.HasNavigated = initialUrl != "about:blank";
+            tab.IsShadow = requestContext != null;
 
             host.AddressChanged += (s, e) => Dispatcher.InvokeAsync(() => OnTabAddressChanged(tab));
             host.TitleChanged += (s, e) => Dispatcher.InvokeAsync(() => OnTabTitleChanged(tab));
             host.LoadingStateChanged += (s, e) => Dispatcher.InvokeAsync(() => OnTabLoadingStateChanged(tab));
             host.PopupRequested += url => Dispatcher.InvokeAsync(() => OpenInTab(url));
+            host.LoginCaptured += (u, p, origin, action) =>
+                Dispatcher.InvokeAsync(() => OnLoginCaptured(tab, u, p, origin, action));
+            host.LoginFieldFocused += (origin, rect) =>
+                Dispatcher.InvokeAsync(() => OnLoginFieldFocused(tab, origin, rect));
 
             tabs.Add(tab);
             BrowserContainer.Children.Add(host);
@@ -194,6 +231,14 @@ namespace YeyouPlusPlus
             {
                 tab.HasNavigated = true;
             }
+
+            // 导航即隐藏填充浮层；影子标签（隔离浏览）不记入主历史。
+            ClosePasswordFillPopup();
+            if (!tab.IsShadow)
+            {
+                HistoryService.Record(addr, tab.Host.Title);
+            }
+
             if (IsActiveTab(tab))
             {
                 AddressBox.Text = addr;
@@ -206,6 +251,10 @@ namespace YeyouPlusPlus
         private void OnTabTitleChanged(BrowserTab tab)
         {
             tab.Title = tab.Host.Title;
+            if (!tab.IsShadow)
+            {
+                HistoryService.UpdateTitle(tab.Host.Address, tab.Host.Title);
+            }
             RenderTabs();
         }
 
@@ -527,6 +576,14 @@ namespace YeyouPlusPlus
 
         private void NavPhoneBox_Click(object sender, RoutedEventArgs e) => ShowView("phonebox");
 
+        private void NavHistory_Click(object sender, RoutedEventArgs e)
+        {
+            var win = new HistoryWindow();
+            win.Owner = this;
+            win.NavigateRequested += url => OpenInTab(url);
+            win.ShowDialog();
+        }
+
         private void ToggleSidebarButton_Click(object sender, RoutedEventArgs e) => ToggleSidebar();
 
         private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)
@@ -551,14 +608,20 @@ namespace YeyouPlusPlus
             SidebarColumn.Width = new GridLength(sidebarCollapsed ? 56 : 164);
             SidebarHeader.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
             NavHomeText.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
+            NavPhoneBoxText.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
+            NavHistoryText.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
             NavSettingsText.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
             ToggleSidebarText.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
             ToggleSidebarIcon.Text = sidebarCollapsed ? "\uE76A" : "\uE76B";
             var pad = sidebarCollapsed ? new Thickness(0, 9, 0, 9) : new Thickness(12, 9, 12, 9);
             var align = sidebarCollapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left;
             NavHomeButton.Padding = pad;
+            NavPhoneBoxButton.Padding = pad;
+            NavHistoryButton.Padding = pad;
             NavSettingsButton.Padding = pad;
             NavHomeButton.HorizontalContentAlignment = align;
+            NavPhoneBoxButton.HorizontalContentAlignment = align;
+            NavHistoryButton.HorizontalContentAlignment = align;
             NavSettingsButton.HorizontalContentAlignment = align;
             ToggleSidebarButton.Padding = pad;
             ToggleSidebarButton.HorizontalContentAlignment = align;
@@ -953,9 +1016,131 @@ namespace YeyouPlusPlus
             CacheManager.ClearCache(() =>
             {
                 SetStatus("缓存已清理");
-                MessageBox.Show("缓存已清理", "页游++", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("缓存已清理（登录状态已保留）。", "页游++", MessageBoxButton.OK, MessageBoxImage.Information);
             });
         }
+
+        // ================= 密码管理器 =================
+
+        /// <summary>登录表单提交捕获：判重后弹保存/更新窗（密码不同弹更新，相同静默）。</summary>
+        private void OnLoginCaptured(BrowserTab tab, string username, string password, string origin, string actionUrl)
+        {
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                return;
+            }
+
+            var existing = PasswordManager.Find(origin, username);
+            if (existing == null)
+            {
+                var prompt = new PasswordSavePromptWindow(origin, username, isUpdate: false) { Owner = this };
+                if (prompt.ShowDialog() == true)
+                {
+                    PasswordManager.Save(origin, username, password, actionUrl);
+                    SetStatus("已保存密码");
+                }
+                return;
+            }
+
+            var existingPlain = PasswordManager.Decrypt(existing.PasswordEncrypted);
+            if (existingPlain != password)
+            {
+                var prompt = new PasswordSavePromptWindow(origin, username, isUpdate: true) { Owner = this };
+                if (prompt.ShowDialog() == true)
+                {
+                    PasswordManager.Update(origin, existing.Username, username, password);
+                    SetStatus("已更新密码");
+                }
+            }
+            // 密码相同则静默跳过。
+        }
+
+        /// <summary>输入框聚焦：有已存账号则在输入框下方弹填充浮层。</summary>
+        private void OnLoginFieldFocused(BrowserTab tab, string origin, string rectJson)
+        {
+            if (!IsActiveTab(tab))
+            {
+                return;
+            }
+            if (!TryParseRect(rectJson, out double x, out double y, out double w, out double h))
+            {
+                return;
+            }
+
+            var entries = PasswordManager.GetForSite(origin);
+            if (entries.Count == 0)
+            {
+                ClosePasswordFillPopup();
+                return;
+            }
+
+            var host = tab.Host;
+            var screen = host.ViewportToScreen(x, y + h);
+            var dip = DeviceToDip(new Point(screen.X, screen.Y));
+            ShowPasswordFillPopup(host, dip.X, dip.Y, entries);
+        }
+
+        private void ShowPasswordFillPopup(BrowserHost host, double screenX, double screenY,
+            System.Collections.Generic.List<PasswordEntry> entries)
+        {
+            if (passwordFillPopup == null)
+            {
+                passwordFillPopup = new PasswordFillPopup();
+                passwordFillPopup.EntrySelected += entry =>
+                {
+                    passwordFillHost?.FillPassword(entry.Username, PasswordManager.Decrypt(entry.PasswordEncrypted));
+                    SetStatus("已填充账号密码");
+                };
+            }
+            passwordFillHost = host;
+            passwordFillPopup.ShowAt(screenX, screenY, entries);
+        }
+
+        private void ClosePasswordFillPopup()
+        {
+            passwordFillHost = null;
+            passwordFillPopup?.Hide();
+        }
+
+        private void PasswordManagerButton_Click(object sender, RoutedEventArgs e)
+        {
+            var win = new PasswordManagerWindow { Owner = this };
+            win.ShowDialog();
+        }
+
+        private static bool TryParseRect(string json, out double x, out double y, out double w, out double h)
+        {
+            x = y = w = h = 0;
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return false;
+            }
+            try
+            {
+                var o = JObject.Parse(json);
+                x = (double?)o["x"] ?? 0;
+                y = (double?)o["y"] ?? 0;
+                w = (double?)o["w"] ?? 0;
+                h = (double?)o["h"] ?? 0;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>屏幕物理像素 → WPF 设备无关单位（DIP）。</summary>
+        private Point DeviceToDip(Point device)
+        {
+            var source = PresentationSource.FromVisual(this);
+            if (source != null && source.CompositionTarget != null)
+            {
+                return source.CompositionTarget.TransformFromDevice.Transform(device);
+            }
+            return device;
+        }
+
 
         // ================= 远程联机：从机画面标签页 =================
 
@@ -1142,39 +1327,10 @@ namespace YeyouPlusPlus
 
         private void CacheTimer_Tick(object sender, EventArgs e)
         {
-            if (cacheCheckRunning)
-            {
-                return;
-            }
-            cacheCheckRunning = true;
-
-            var dir = AppPaths.CacheDir;
-            Task.Run(() => CacheManager.GetDirectorySize(dir))
-                .ContinueWith(t =>
-                {
-                    cacheCheckRunning = false;
-                    if (t.IsFaulted || t.IsCanceled)
-                    {
-                        return;
-                    }
-                    lastCacheSize = t.Result;
-                    HandleCacheSize(lastCacheSize);
-                }, TaskScheduler.FromCurrentSynchronizationContext());
-        }
-
-        private void HandleCacheSize(long size)
-        {
-            if (size >= CacheDangerBytes)
-            {
-                CacheManager.ClearCache(() =>
-                {
-                    SetStatus("缓存已超过 " + FormatBytes(CacheDangerBytes) + "，已自动清理");
-                });
-            }
-            else if (size >= CacheWarningBytes)
-            {
-                SetStatus("缓存已较大（" + FormatBytes(size) + "），建议清理");
-            }
+            // 阈值判断 + 后台清理由 CacheCleaner 负责；测量结果回传用于标题栏展示缓存量。
+            CacheCleaner.EnsureBelowThreshold(
+                onMeasured: size => lastCacheSize = size,
+                onCleaned: () => SetStatus("缓存已超过阈值，已自动清理"));
         }
 
         private static string FormatBytes(long bytes)
@@ -1391,10 +1547,31 @@ namespace YeyouPlusPlus
         {
             DataDirBox.Text = AppPaths.DataDir;
             DownloadDirBox.Text = AppPaths.DownloadDir;
+            CacheThresholdBox.Text = AppSettingsStore.Current.CacheCleanThresholdMB.ToString();
             CurrentVersionText.Text = "当前版本 v" + UpdateChecker.CurrentVersion;
             if (releases != null)
             {
                 RenderReleaseList();
+            }
+        }
+
+        private void SaveCacheThresholdButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (int.TryParse(CacheThresholdBox.Text.Trim(), out int mb))
+            {
+                if (mb < 100)
+                {
+                    mb = 100;
+                }
+                AppSettingsStore.Current.CacheCleanThresholdMB = mb;
+                AppSettingsStore.Save();
+                CacheThresholdBox.Text = mb.ToString();
+                SetStatus("缓存自动清理阈值已保存：" + mb + " MB");
+            }
+            else
+            {
+                MessageBox.Show("请输入有效的数字（MB，最低 100）。", "页游++",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 
@@ -1455,7 +1632,7 @@ namespace YeyouPlusPlus
             try
             {
                 Directory.CreateDirectory(newPath);
-                foreach (var f in new[] { "favorites.json", "quicklinks.json", "zoom.json", "shadows.json" })
+                foreach (var f in new[] { "favorites.json", "quicklinks.json", "zoom.json", "shadows.json", "history.json", "passwords.json" })
                 {
                     var src = Path.Combine(oldDir, f);
                     if (File.Exists(src))
@@ -1474,6 +1651,8 @@ namespace YeyouPlusPlus
                 QuickLinks.Reload();
                 Favorites.Reload();
                 ShadowManager.Reload();
+                HistoryService.Reload();
+                PasswordManager.Reload();
                 RenderQuickLinks();
                 RefreshSettingsView();
                 SetStatus("数据存储路径已更新");
@@ -1753,6 +1932,7 @@ namespace YeyouPlusPlus
             cacheTimer?.Stop();
             titleTimer?.Stop();
             zoomDebounce?.Stop();
+            tipsTimer?.Stop();
             foreach (var tab in tabs)
             {
                 if (tab.IsClient)
@@ -1766,6 +1946,14 @@ namespace YeyouPlusPlus
                 }
             }
             tabs.Clear();
+
+            // 关闭填充浮层（独立顶层窗口）。
+            passwordFillHost = null;
+            passwordFillPopup?.Close();
+
+            // 关闭时最后查一次缓存阈值（后台尽力清理，不阻塞退出）。
+            CacheCleaner.EnsureBelowThreshold();
+
             base.OnClosed(e);
         }
     }
