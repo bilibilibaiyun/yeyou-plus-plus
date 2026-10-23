@@ -104,6 +104,7 @@
         <Grid Grid.Column="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
@@ -130,8 +131,11 @@
                 </DockPanel>
             </Border>
 
+            <!-- 全局统一音量条（常驻标签条正下方，与标签条同生命周期） -->
+            <local:VolumeBar x:Name="VolumeBar" Grid.Row="1"/>
+
             <!-- 内容区（书签栏 + 主页 / 浏览器 / 设置 三视图） -->
-            <Grid Grid.Row="1">
+            <Grid Grid.Row="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
@@ -194,7 +198,7 @@
                     </Grid.RowDefinitions>
 
                     <!-- 工具栏 -->
-                    <DockPanel Grid.Row="0" Margin="8,6" LastChildFill="True">
+                    <DockPanel x:Name="BrowserToolbar" Grid.Row="0" Margin="8,6" LastChildFill="True">
                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
                             <Button x:Name="BackButton" Style="{StaticResource IconButton}" Content="&#xE72B;"
                                     Margin="0,0,5,0" Click="BackButton_Click" ToolTip="后退"/>
@@ -403,7 +407,7 @@
             </Grid>
 
             <!-- 状态栏 -->
-            <Border x:Name="StatusBarBorder" Grid.Row="2"
+            <Border x:Name="StatusBarBorder" Grid.Row="3"
                     Background="{DynamicResource Theme.CardBg}"
                     BorderBrush="{DynamicResource Theme.Border}" BorderThickness="0,1,0,0"
                     Padding="12,4">

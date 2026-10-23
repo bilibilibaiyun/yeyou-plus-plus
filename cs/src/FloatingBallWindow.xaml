@@ -1,0 +1,30 @@
+<Window x:Class="YeyouPlusPlus.FloatingBallWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" ShowActivated="False"
+        ResizeMode="NoResize" SizeToContent="WidthAndHeight">
+    <StackPanel>
+        <!-- 悬浮菜单卡片（默认收起，展开后位于悬浮球上方） -->
+        <Border x:Name="MenuPanel" Visibility="Collapsed"
+                Background="{DynamicResource Theme.CardBg}"
+                BorderBrush="{DynamicResource Theme.Border}" BorderThickness="1"
+                CornerRadius="12" Padding="10" Margin="0,0,0,8"
+                HorizontalAlignment="Right">
+            <StackPanel>
+                <Button x:Name="ImmersiveToggleButton" Content="进入全屏沉浸式浏览"
+                        Style="{StaticResource PrimaryButton}" Height="34" Padding="16,0"
+                        Click="ImmersiveToggleButton_Click"/>
+                <TextBlock x:Name="EscHintText" Text="按 Esc 退出沉浸式" FontSize="11"
+                           Margin="0,8,0,0" HorizontalAlignment="Center"
+                           Foreground="{DynamicResource Theme.TextSecondary}"
+                           Visibility="Collapsed"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 悬浮球按钮（48×48 圆形） -->
+        <Button x:Name="BallButton" Style="{StaticResource FloatingBallButton}"
+                Content="&#xE740;" ToolTip="全屏沉浸式浏览"
+                HorizontalAlignment="Right" Click="BallButton_Click"/>
+    </StackPanel>
+</Window>

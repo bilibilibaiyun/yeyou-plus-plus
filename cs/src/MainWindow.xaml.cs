@@ -48,6 +48,28 @@ namespace YeyouPlusPlus
         private double pendingZoomPercent = 100;
         private bool shadowSidebarExpanded;
 
+        // ===== 全局统一音量 =====
+        private readonly DispatcherTimer volumeTimer;
+
+        // ===== 全屏沉浸式 + 右下角悬浮球 =====
+        private bool immersive;
+        private FloatingBallWindow floatingBall;
+        private readonly LowLevelKeyboardHook immersiveEscHook;
+
+        // 沉浸式进入前的 UI 状态快照（退出时逐项还原）。
+        private GridLength immersiveSidebarWidth;
+        private GridLength immersiveShadowSidebarWidth;
+        private Visibility immersiveSidebarVisibility;
+        private Visibility immersiveShadowSidebarVisibility;
+        private Visibility immersiveTabBarVisibility;
+        private Visibility immersiveVolumeBarVisibility;
+        private Visibility immersiveBookmarkBarVisibility;
+        private Visibility immersiveToolbarVisibility;
+        private Visibility immersiveStatusBarVisibility;
+        private double immersiveAspectRatio;
+        private BrowserHost immersiveHost;
+        private Brush immersiveContainerBg;
+
         // ===== 底部「操作小技巧」轮换提示条 =====
         private static readonly string[] OperationTips =
         {
@@ -131,6 +153,27 @@ namespace YeyouPlusPlus
             {
                 zoomDebounce.Stop();
                 ApplyZoomNow();
+            };
+
+            // 全局统一音量：滑块 / 静音 → 本进程 Core Audio 会话。
+            VolumeBar.VolumeChanged += pct => AudioVolumeController.SetVolume(pct / 100f);
+            VolumeBar.MuteChanged += muted => AudioVolumeController.SetMuted(muted);
+
+            // 音量「粘住」：定时枚举本进程音频会话，把缓存音量应用到新出现的会话。
+            volumeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+            volumeTimer.Tick += (s, e) => AudioVolumeController.Apply();
+            volumeTimer.Start();
+
+            // 沉浸式全局 Esc 钩子：只在进入沉浸式时挂载，退出即卸载。
+            immersiveEscHook = new LowLevelKeyboardHook(ExitImmersive);
+
+            // 沉浸式期间窗口 resize 时重新等比缩放 letterbox。
+            SizeChanged += (s, e) =>
+            {
+                if (immersive)
+                {
+                    ApplyImmersiveLetterbox();
+                }
             };
 
             // 站点图标下载完成后刷新快捷入口。
@@ -532,6 +575,16 @@ namespace YeyouPlusPlus
             PhoneBoxPanel.Visibility = view == "phonebox" ? Visibility.Visible : Visibility.Collapsed;
 
             ApplyBookmarkBarVisibility();
+
+            // 悬浮球仅浏览器视图显示（主页 / 设置 / 联机视图隐藏）。
+            if (view == "browser")
+            {
+                ShowFloatingBall();
+            }
+            else
+            {
+                HideFloatingBall();
+            }
 
             NavHomeButton.Tag = view == "home" ? "selected" : null;
             NavSettingsButton.Tag = view == "settings" ? "selected" : null;
@@ -1400,6 +1453,184 @@ namespace YeyouPlusPlus
             StatusText.Text = text ?? string.Empty;
         }
 
+        // ================= 全屏沉浸式 + 右下角悬浮球 =================
+
+        /// <summary>懒创建悬浮球窗口（Owner=this，独立置顶 HWND），并订阅主窗口联动事件。</summary>
+        private void EnsureFloatingBall()
+        {
+            if (floatingBall != null)
+            {
+                return;
+            }
+
+            floatingBall = new FloatingBallWindow { Owner = this };
+            floatingBall.ImmersiveToggleRequested += OnFloatingBallToggle;
+
+            // 随主窗口移动 / 缩放 / 最大化联动；最小化时隐藏悬浮球。
+            LocationChanged += (s, e) => floatingBall.Reposition();
+            SizeChanged += (s, e) => floatingBall.Reposition();
+            StateChanged += (s, e) =>
+            {
+                if (WindowState == WindowState.Minimized)
+                {
+                    floatingBall.HideBall();
+                }
+                else if (BrowserView.Visibility == Visibility.Visible)
+                {
+                    floatingBall.ShowBall();
+                }
+            };
+        }
+
+        private void ShowFloatingBall()
+        {
+            EnsureFloatingBall();
+            floatingBall.ShowBall();
+        }
+
+        private void HideFloatingBall()
+        {
+            floatingBall?.HideBall();
+        }
+
+        private void OnFloatingBallToggle()
+        {
+            if (immersive)
+            {
+                ExitImmersive();
+            }
+            else
+            {
+                EnterImmersive();
+            }
+        }
+
+        /// <summary>
+        /// 进入应用内沉浸式：隐藏自身边栏 / 工具栏 / 标签条 / 音量条 / 书签栏 / 状态栏，
+        /// 仅保留游戏画面并按进入前的纵横比等比居中（letterbox 黑边），保留系统任务栏与窗口边框。
+        /// </summary>
+        private void EnterImmersive()
+        {
+            if (immersive)
+            {
+                return;
+            }
+            immersive = true;
+
+            // 纵横比基准 = 进入沉浸式前 BrowserContainer 的实际宽高比（兜底 16:9）。
+            immersiveAspectRatio = BrowserContainer.ActualWidth > 0 && BrowserContainer.ActualHeight > 0
+                ? BrowserContainer.ActualWidth / BrowserContainer.ActualHeight
+                : 16.0 / 9.0;
+
+            // 快照当前 UI 状态，退出时逐项还原。
+            immersiveSidebarWidth = SidebarColumn.Width;
+            immersiveShadowSidebarWidth = ShadowSidebarColumn.Width;
+            immersiveSidebarVisibility = Sidebar.Visibility;
+            immersiveShadowSidebarVisibility = ShadowSidebar.Visibility;
+            immersiveTabBarVisibility = TabBarBorder.Visibility;
+            immersiveVolumeBarVisibility = VolumeBar.Visibility;
+            immersiveBookmarkBarVisibility = BookmarkBar.Visibility;
+            immersiveToolbarVisibility = BrowserToolbar.Visibility;
+            immersiveStatusBarVisibility = StatusBarBorder.Visibility;
+            immersiveContainerBg = BrowserContainer.Background;
+
+            // 隐藏左侧边栏（列宽 0 + Collapsed）、右侧影子边栏、顶部标签条、音量条、书签栏、浏览器工具栏、底部状态栏。
+            SidebarColumn.Width = new GridLength(0);
+            Sidebar.Visibility = Visibility.Collapsed;
+            ShadowSidebarColumn.Width = new GridLength(0);
+            ShadowSidebar.Visibility = Visibility.Collapsed;
+            TabBarBorder.Visibility = Visibility.Collapsed;
+            VolumeBar.Visibility = Visibility.Collapsed;
+            BookmarkBar.Visibility = Visibility.Collapsed;
+            BrowserToolbar.Visibility = Visibility.Collapsed;
+            StatusBarBorder.Visibility = Visibility.Collapsed;
+
+            // 强制布局，拿到隐藏 chrome 后的可用区。
+            UpdateLayout();
+
+            // letterbox：黑边填充 + 等比缩放。
+            // HwndHost 禁用 RenderTransform / LayoutTransform，只能直接改 Width/Height + Alignment。
+            BrowserContainer.Background = Brushes.Black;
+            immersiveHost = CurrentHost; // 联机从机画面标签的 Host 为 null，跳过等比缩放。
+            ApplyImmersiveLetterbox();
+
+            // 只在沉浸式期间挂载全局 Esc 钩子，退出即卸载。
+            immersiveEscHook.Start();
+            floatingBall?.SetImmersive(true);
+            SetStatus("已进入全屏沉浸式浏览（按 Esc 退出）");
+        }
+
+        /// <summary>
+        /// 按进入沉浸式时的纵横比，把当前浏览器宿主等比缩放居中到可用区（黑边填充）。
+        /// 沉浸式期间窗口 resize 会重复调用本方法以重算 letterbox。
+        /// </summary>
+        private void ApplyImmersiveLetterbox()
+        {
+            if (!immersive || immersiveHost == null)
+            {
+                return;
+            }
+
+            double availW = BrowserContainer.ActualWidth;
+            double availH = BrowserContainer.ActualHeight;
+            if (availW <= 0 || availH <= 0)
+            {
+                return;
+            }
+
+            double fitW = Math.Min(availW, availH * immersiveAspectRatio);
+            double fitH = fitW / immersiveAspectRatio;
+
+            // 超高窗口反向收敛，避免算出的高度超出可用区。
+            if (fitH > availH)
+            {
+                fitH = availH;
+                fitW = fitH * immersiveAspectRatio;
+            }
+
+            immersiveHost.Width = fitW;
+            immersiveHost.Height = fitH;
+            immersiveHost.HorizontalAlignment = HorizontalAlignment.Center;
+            immersiveHost.VerticalAlignment = VerticalAlignment.Center;
+        }
+
+        /// <summary>退出沉浸式：还原全部 UI 与浏览器宿主布局。</summary>
+        private void ExitImmersive()
+        {
+            if (!immersive)
+            {
+                return;
+            }
+            immersive = false;
+
+            immersiveEscHook.Stop();
+
+            // 还原浏览器宿主为拉伸填充。
+            if (immersiveHost != null)
+            {
+                immersiveHost.Width = double.NaN;
+                immersiveHost.Height = double.NaN;
+                immersiveHost.HorizontalAlignment = HorizontalAlignment.Stretch;
+                immersiveHost.VerticalAlignment = VerticalAlignment.Stretch;
+                immersiveHost = null;
+            }
+            BrowserContainer.Background = immersiveContainerBg;
+
+            // 还原全部 UI 状态。
+            SidebarColumn.Width = immersiveSidebarWidth;
+            ShadowSidebarColumn.Width = immersiveShadowSidebarWidth;
+            Sidebar.Visibility = immersiveSidebarVisibility;
+            ShadowSidebar.Visibility = immersiveShadowSidebarVisibility;
+            TabBarBorder.Visibility = immersiveTabBarVisibility;
+            VolumeBar.Visibility = immersiveVolumeBarVisibility;
+            BookmarkBar.Visibility = immersiveBookmarkBarVisibility;
+            BrowserToolbar.Visibility = immersiveToolbarVisibility;
+            StatusBarBorder.Visibility = immersiveStatusBarVisibility;
+
+            floatingBall?.SetImmersive(false);
+            SetStatus("已退出全屏沉浸式浏览");
+        }
+
         // ================= 影子 =================
 
         private void ShadowToggleButton_Click(object sender, RoutedEventArgs e)
@@ -1980,6 +2211,7 @@ namespace YeyouPlusPlus
             titleTimer?.Stop();
             zoomDebounce?.Stop();
             tipsTimer?.Stop();
+            volumeTimer?.Stop();
             foreach (var tab in tabs)
             {
                 if (tab.IsClient)
@@ -1997,6 +2229,10 @@ namespace YeyouPlusPlus
             // 关闭填充浮层（独立顶层窗口）。
             passwordFillHost = null;
             passwordFillPopup?.Close();
+
+            // 卸载沉浸式 Esc 钩子（若处于沉浸式直接关闭窗口），并关闭右下角悬浮球。
+            immersiveEscHook?.Stop();
+            floatingBall?.Close();
 
             // 关闭时最后查一次缓存阈值（后台尽力清理，不阻塞退出）。
             CacheCleaner.EnsureBelowThreshold();

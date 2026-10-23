@@ -191,6 +191,22 @@ namespace YeyouPlusPlus
         public void Reload() => browser.Reload();
         public void Stop() => browser.Stop();
 
+        /// <summary>
+        /// 设置该浏览器音频静音（CefSharp 84 提供的 per-browser 静音包装）。
+        /// 本期仅提供能力包装，不接 UI；全局统一音量由 AudioVolumeController 控制。
+        /// </summary>
+        public void SetAudioMuted(bool muted)
+        {
+            try
+            {
+                browser.GetBrowserHost()?.SetAudioMuted(muted);
+            }
+            catch
+            {
+                // 浏览器尚未初始化 / 已释放时静默忽略。
+            }
+        }
+
         /// <summary>设置页面缩放百分比（50~200）。</summary>
         public void SetZoomPercent(double percent)
         {

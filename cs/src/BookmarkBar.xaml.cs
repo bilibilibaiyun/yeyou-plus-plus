@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Media;
 
 namespace YeyouPlusPlus
@@ -50,11 +51,10 @@ namespace YeyouPlusPlus
             var isBookmark = node.Kind == FavoriteNodeKind.Bookmark;
             var btn = new Button
             {
+                Style = (Style)FindResource("BookmarkButton"),
                 Height = 30,
                 Padding = new Thickness(10, 4, 10, 4),
-                Margin = new Thickness(0, 0, 4, 0),
-                Background = Brushes.Transparent,
-                BorderThickness = new Thickness(0),
+                Margin = new Thickness(0, 4, 8, 4),
                 Cursor = System.Windows.Input.Cursors.Hand,
                 Tag = node,
                 Content = BuildContent(
@@ -86,7 +86,7 @@ namespace YeyouPlusPlus
                 FontFamily = (FontFamily)FindResource("IconFont"),
                 FontSize = 14,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = iconBrush
+                Style = CreatePressedWhiteStyle(iconBrush)
             });
             stack.Children.Add(new TextBlock
             {
@@ -96,9 +96,33 @@ namespace YeyouPlusPlus
                 VerticalAlignment = VerticalAlignment.Center,
                 MaxWidth = 140,
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                Foreground = (Brush)FindResource("Theme.TextPrimary")
+                Style = CreatePressedWhiteStyle((Brush)FindResource("Theme.TextPrimary"))
             });
             return stack;
+        }
+
+        /// <summary>
+        /// 生成「常态使用指定前景色、父级按钮按下时变为白色」的文本样式。
+        /// 书签按钮模板里按下态只设置 ContentPresenter 的 TextElement.Foreground（继承值），
+        /// 会被子 TextBlock 的局部 Foreground 压过；改用 DataTrigger 在按下时显式置白，
+        /// 从而在蓝底按压态下让图标与文字都清晰可见。
+        /// </summary>
+        private static Style CreatePressedWhiteStyle(Brush normalBrush)
+        {
+            var style = new Style(typeof(TextBlock));
+            style.Setters.Add(new Setter(TextBlock.ForegroundProperty, normalBrush));
+
+            var pressed = new DataTrigger
+            {
+                Binding = new Binding("IsPressed")
+                {
+                    RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Button), 1)
+                },
+                Value = true
+            };
+            pressed.Setters.Add(new Setter(TextBlock.ForegroundProperty, Brushes.White));
+            style.Triggers.Add(pressed);
+            return style;
         }
 
         /// <summary>点击文件夹展开递归子菜单（可多级嵌套，浮于 CEF 之上）。</summary>

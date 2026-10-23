@@ -1,13 +1,15 @@
 <UserControl x:Class="YeyouPlusPlus.BookmarkBar"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid Background="{DynamicResource Theme.TabBarBg}">
-        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
-                      Padding="6,2">
-            <StackPanel x:Name="ItemsPanel" Orientation="Horizontal"/>
-        </ScrollViewer>
-        <TextBlock x:Name="EmptyText" Text="收藏的网页会显示在这里" FontSize="12"
-                   Foreground="{DynamicResource Theme.TextSecondary}"
-                   VerticalAlignment="Center" Margin="10,0,0,0" Visibility="Collapsed"/>
-    </Grid>
+    <Border BorderBrush="{DynamicResource Theme.Border}" BorderThickness="0,0,0,1">
+        <Grid Background="Transparent">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                          Padding="8,4">
+                <StackPanel x:Name="ItemsPanel" Orientation="Horizontal"/>
+            </ScrollViewer>
+            <TextBlock x:Name="EmptyText" Text="收藏的网页会显示在这里" FontSize="12"
+                       Foreground="{DynamicResource Theme.TextSecondary}"
+                       VerticalAlignment="Center" Margin="10,0,0,0" Visibility="Collapsed"/>
+        </Grid>
+    </Border>
 </UserControl>
