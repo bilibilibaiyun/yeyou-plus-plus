@@ -6,7 +6,7 @@ namespace YeyouPlusPlus
 {
     /// <summary>
     /// 全局统一音量条：静音开关（喇叭图标）+ 0~100 滑块 + 百分比文本。
-    /// 与标签条同生命周期常驻，不绑定具体标签页。
+    /// 常驻底部状态栏靠左，不绑定具体标签页。
     /// </summary>
     public partial class VolumeBar : UserControl
     {

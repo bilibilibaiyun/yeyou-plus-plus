@@ -62,7 +62,6 @@ namespace YeyouPlusPlus
         private Visibility immersiveSidebarVisibility;
         private Visibility immersiveShadowSidebarVisibility;
         private Visibility immersiveTabBarVisibility;
-        private Visibility immersiveVolumeBarVisibility;
         private Visibility immersiveBookmarkBarVisibility;
         private Visibility immersiveToolbarVisibility;
         private Visibility immersiveStatusBarVisibility;
@@ -1506,7 +1505,7 @@ namespace YeyouPlusPlus
         }
 
         /// <summary>
-        /// 进入应用内沉浸式：隐藏自身边栏 / 工具栏 / 标签条 / 音量条 / 书签栏 / 状态栏，
+        /// 进入应用内沉浸式：隐藏自身边栏 / 工具栏 / 标签条 / 书签栏 / 状态栏（含底部音量条），
         /// 仅保留游戏画面并按进入前的纵横比等比居中（letterbox 黑边），保留系统任务栏与窗口边框。
         /// </summary>
         private void EnterImmersive()
@@ -1528,19 +1527,17 @@ namespace YeyouPlusPlus
             immersiveSidebarVisibility = Sidebar.Visibility;
             immersiveShadowSidebarVisibility = ShadowSidebar.Visibility;
             immersiveTabBarVisibility = TabBarBorder.Visibility;
-            immersiveVolumeBarVisibility = VolumeBar.Visibility;
             immersiveBookmarkBarVisibility = BookmarkBar.Visibility;
             immersiveToolbarVisibility = BrowserToolbar.Visibility;
             immersiveStatusBarVisibility = StatusBarBorder.Visibility;
             immersiveContainerBg = BrowserContainer.Background;
 
-            // 隐藏左侧边栏（列宽 0 + Collapsed）、右侧影子边栏、顶部标签条、音量条、书签栏、浏览器工具栏、底部状态栏。
+            // 隐藏左侧边栏（列宽 0 + Collapsed）、右侧影子边栏、顶部标签条、书签栏、浏览器工具栏、底部状态栏（含音量条）。
             SidebarColumn.Width = new GridLength(0);
             Sidebar.Visibility = Visibility.Collapsed;
             ShadowSidebarColumn.Width = new GridLength(0);
             ShadowSidebar.Visibility = Visibility.Collapsed;
             TabBarBorder.Visibility = Visibility.Collapsed;
-            VolumeBar.Visibility = Visibility.Collapsed;
             BookmarkBar.Visibility = Visibility.Collapsed;
             BrowserToolbar.Visibility = Visibility.Collapsed;
             StatusBarBorder.Visibility = Visibility.Collapsed;
@@ -1622,7 +1619,6 @@ namespace YeyouPlusPlus
             Sidebar.Visibility = immersiveSidebarVisibility;
             ShadowSidebar.Visibility = immersiveShadowSidebarVisibility;
             TabBarBorder.Visibility = immersiveTabBarVisibility;
-            VolumeBar.Visibility = immersiveVolumeBarVisibility;
             BookmarkBar.Visibility = immersiveBookmarkBarVisibility;
             BrowserToolbar.Visibility = immersiveToolbarVisibility;
             StatusBarBorder.Visibility = immersiveStatusBarVisibility;

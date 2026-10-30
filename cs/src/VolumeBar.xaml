@@ -1,18 +1,19 @@
 <UserControl x:Class="YeyouPlusPlus.VolumeBar"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Border Background="{DynamicResource Theme.TabBarBg}" Padding="8,2,8,4">
+    <Border VerticalAlignment="Center" MaxWidth="240" Padding="0">
         <DockPanel LastChildFill="True">
             <ToggleButton x:Name="MuteButton" DockPanel.Dock="Left"
                           Style="{StaticResource MuteToggleButton}"
+                          Width="20" Height="20" FontSize="12"
                           Content="&#xE767;" ToolTip="静音"
                           Click="MuteButton_Click"/>
             <TextBlock x:Name="VolumeText" DockPanel.Dock="Right"
-                       Text="100%" Width="40" TextAlignment="Right"
+                       Text="100%" Width="34" TextAlignment="Right"
                        FontSize="11" VerticalAlignment="Center"
                        Foreground="{DynamicResource Theme.TextSecondary}"/>
             <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Value="100"
-                    Margin="8,0,8,0" VerticalAlignment="Center"
+                    Margin="6,0,4,0" VerticalAlignment="Center"
                     ValueChanged="VolumeSlider_ValueChanged"/>
         </DockPanel>
     </Border>

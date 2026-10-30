@@ -104,7 +104,6 @@
         <Grid Grid.Column="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
@@ -131,11 +130,8 @@
                 </DockPanel>
             </Border>
 
-            <!-- 全局统一音量条（常驻标签条正下方，与标签条同生命周期） -->
-            <local:VolumeBar x:Name="VolumeBar" Grid.Row="1"/>
-
             <!-- 内容区（书签栏 + 主页 / 浏览器 / 设置 三视图） -->
-            <Grid Grid.Row="2">
+            <Grid Grid.Row="1">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
@@ -406,20 +402,22 @@
                 </Grid>
             </Grid>
 
-            <!-- 状态栏 -->
-            <Border x:Name="StatusBarBorder" Grid.Row="3"
+            <!-- 状态栏（底部：左侧音量条 + 中间状态文字 + 右侧提示条） -->
+            <Border x:Name="StatusBarBorder" Grid.Row="2"
                     Background="{DynamicResource Theme.CardBg}"
                     BorderBrush="{DynamicResource Theme.Border}" BorderThickness="0,1,0,0"
-                    Padding="12,4">
-                <Grid>
-                    <TextBlock x:Name="StatusText" Text="就绪" FontSize="12"
-                               HorizontalAlignment="Left" VerticalAlignment="Center"
-                               Foreground="{DynamicResource Theme.TextSecondary}"/>
-                    <TextBlock x:Name="TipsText" FontSize="12"
+                    Padding="10,2">
+                <DockPanel LastChildFill="True">
+                    <local:VolumeBar x:Name="VolumeBar" DockPanel.Dock="Left"
+                                     VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TipsText" DockPanel.Dock="Right" FontSize="12"
                                HorizontalAlignment="Right" VerticalAlignment="Center"
                                Foreground="#2ECC71" IsHitTestVisible="False"
                                TextTrimming="CharacterEllipsis"/>
-                </Grid>
+                    <TextBlock x:Name="StatusText" Text="就绪" FontSize="12"
+                               HorizontalAlignment="Left" VerticalAlignment="Center"
+                               Foreground="{DynamicResource Theme.TextSecondary}"/>
+                </DockPanel>
             </Border>
 
             <!-- 『远程联机』 -->
