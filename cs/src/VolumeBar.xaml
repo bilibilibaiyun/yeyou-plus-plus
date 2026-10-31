@@ -13,6 +13,7 @@
                        FontSize="11" VerticalAlignment="Center"
                        Foreground="{DynamicResource Theme.TextSecondary}"/>
             <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Value="100"
+                    MinWidth="110"
                     Margin="6,0,4,0" VerticalAlignment="Center"
                     ValueChanged="VolumeSlider_ValueChanged"/>
         </DockPanel>
