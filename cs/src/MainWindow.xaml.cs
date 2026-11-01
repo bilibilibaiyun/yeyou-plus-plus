@@ -444,7 +444,7 @@ namespace YeyouPlusPlus
             ShowView("browser");
         }
 
-        /// <summary>在标签中打开用户输入：先归一化（网址 or 关键词→必应搜索），复用已初始化的空白标签，否则新建标签。</summary>
+        /// <summary>在标签中打开用户输入：先归一化（网址 or 关键词→按当前搜索引擎搜索），复用已初始化的空白标签，否则新建标签。</summary>
         private void OpenInTab(string input)
         {
             if (string.IsNullOrWhiteSpace(input))
@@ -900,7 +900,7 @@ namespace YeyouPlusPlus
             return s.Contains(".") && !s.Contains(" ") && !s.Contains("　");
         }
 
-        /// <summary>把地址栏 / 搜索框输入归一化为可加载 URL：网址原样，关键词转必应搜索。</summary>
+        /// <summary>把地址栏 / 搜索框输入归一化为可加载 URL：网址原样，关键词按当前设置的搜索引擎搜索。</summary>
         private static string ResolveUrl(string input)
         {
             input = (input ?? string.Empty).Trim();
@@ -908,7 +908,8 @@ namespace YeyouPlusPlus
             {
                 return input.Contains("://") ? input : "http://" + input;
             }
-            return "https://www.bing.com/search?q=" + Uri.EscapeDataString(input);
+            string template = SearchEngines.GetTemplate(AppSettingsStore.Current.SearchEngine);
+            return template + Uri.EscapeDataString(input);
         }
 
         private void HomeSearchBox_KeyDown(object sender, KeyEventArgs e)
@@ -1098,6 +1099,49 @@ namespace YeyouPlusPlus
             AppSettingsStore.Current.ShowBookmarkBar = ShowBookmarkBarCheckBox.IsChecked == true;
             AppSettingsStore.Save();
             ApplyBookmarkBarVisibility();
+        }
+
+        /// <summary>按当前设置的搜索引擎 key 回填下拉框选中项。</summary>
+        private void SelectSearchEngine(string key)
+        {
+            if (SearchEngineComboBox == null)
+            {
+                return;
+            }
+            foreach (var item in SearchEngineComboBox.Items)
+            {
+                if (item is ComboBoxItem cbi &&
+                    string.Equals(cbi.Tag as string, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    SearchEngineComboBox.SelectedItem = item;
+                    return;
+                }
+            }
+            if (SearchEngineComboBox.Items.Count > 0)
+            {
+                SearchEngineComboBox.SelectedIndex = 0;
+            }
+        }
+
+        private void SearchEngineComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (SearchEngineComboBox == null)
+            {
+                return;
+            }
+            var item = SearchEngineComboBox.SelectedItem as ComboBoxItem;
+            if (item == null)
+            {
+                return;
+            }
+            string key = item.Tag as string;
+            if (string.IsNullOrEmpty(key) ||
+                string.Equals(key, AppSettingsStore.Current.SearchEngine, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+            AppSettingsStore.Current.SearchEngine = key;
+            AppSettingsStore.Save();
         }
 
         private void FavoritesButton_Click(object sender, RoutedEventArgs e)
@@ -1821,6 +1865,7 @@ namespace YeyouPlusPlus
             DownloadDirBox.Text = AppPaths.DownloadDir;
             CacheThresholdBox.Text = AppSettingsStore.Current.CacheCleanThresholdMB.ToString();
             ShowBookmarkBarCheckBox.IsChecked = AppSettingsStore.Current.ShowBookmarkBar;
+            SelectSearchEngine(AppSettingsStore.Current.SearchEngine);
             CurrentVersionText.Text = "当前版本 v" + UpdateChecker.CurrentVersion;
             if (releases != null)
             {

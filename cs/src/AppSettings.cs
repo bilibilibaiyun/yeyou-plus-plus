@@ -1,5 +1,6 @@
 using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Microsoft.Win32;
 
@@ -32,6 +33,38 @@ namespace YeyouPlusPlus
 
         /// <summary>是否显示书签栏（默认显示）。</summary>
         public bool ShowBookmarkBar { get; set; } = true;
+
+        /// <summary>搜索引擎 key（bing = 必应国内版 / baidu = 百度 / sogou = 搜狗）。</summary>
+        public string SearchEngine { get; set; } = "bing";
+    }
+
+    /// <summary>
+    /// 搜索引擎静态配置：engine key → 搜索 URL 模板。
+    /// 默认使用必应国内版（cn.bing.com），避免部分企业/校园网的「禁止访问国外网站」
+    /// 上网行为管理策略拦截国际版必应并返回提示页。
+    /// </summary>
+    public static class SearchEngines
+    {
+        /// <summary>默认搜索引擎 key。</summary>
+        public const string DefaultKey = "bing";
+
+        private static readonly Dictionary<string, string> Templates =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "bing", "https://cn.bing.com/search?q=" },
+                { "baidu", "https://www.baidu.com/s?wd=" },
+                { "sogou", "https://www.sogou.com/web?query=" }
+            };
+
+        /// <summary>根据 key 取搜索 URL 模板；未知 key 回退到必应国内版。</summary>
+        public static string GetTemplate(string key)
+        {
+            if (!string.IsNullOrEmpty(key) && Templates.TryGetValue(key, out var template))
+            {
+                return template;
+            }
+            return Templates[DefaultKey];
+        }
     }
 
     public static class AppSettingsStore
