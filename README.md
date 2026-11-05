@@ -6,7 +6,7 @@
 
 **Windows Flash 页游浏览器 —— 真·Flash 内核 + 游戏变速齿轮，开箱即用**
 
-![Version](https://img.shields.io/badge/version-2.5.0-blue) ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey) ![Flash](https://img.shields.io/badge/Flash-34.0.0.330%20PPAPI-red) ![License](https://img.shields.io/badge/license-MIT-green)
+![Version](https://img.shields.io/badge/version-2.5.9-blue) ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-lightgrey) ![Flash](https://img.shields.io/badge/Flash-34.0.0.330%20PPAPI-red) ![License](https://img.shields.io/badge/license-MIT-green)
 
 主页：快捷入口 + 必应搜索，一目了然
 
