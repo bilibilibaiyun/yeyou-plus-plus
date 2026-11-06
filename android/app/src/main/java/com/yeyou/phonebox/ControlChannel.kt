@@ -2,6 +2,8 @@ package com.yeyou.phonebox
 
 import org.json.JSONObject
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -48,6 +50,11 @@ class ControlChannel(private val tunnel: RelayTunnel) {
     private val running = AtomicBoolean(false)
     private var readerThread: Thread? = null
 
+    /** 单线程写队列：所有控制写（Hello/Ready/Key）串行提交，保证 down/up 顺序且不落在主线程。 */
+    private val writeExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "PhoneBoxControlWriter").apply { isDaemon = true }
+    }
+
     /** 是否已连接（仅用于状态展示，非精确断言）。 */
     val isConnected: Boolean
         get() = running.get() && tunnel.isConnected
@@ -61,20 +68,15 @@ class ControlChannel(private val tunnel: RelayTunnel) {
             return
         }
 
-        try {
-            running.set(true)
-            sendHello()
+        running.set(true)
+        // Hello 也走统一写队列，保证与后续 Ready/Key 严格串行且不落在主线程。
+        sendHello()
 
-            readerThread = Thread({ readLoop() }, "PhoneBoxRelayDemux").apply {
-                isDaemon = true
-                start()
-            }
-            AppLog.i("ControlChannel", "已发送 Hello，读线程已启动")
-        } catch (e: Exception) {
-            AppLog.e("ControlChannel", "启动失败: ${e.message}", e)
-            running.set(false)
-            listener?.onError(e.message ?: "控制通道启动失败")
+        readerThread = Thread({ readLoop() }, "PhoneBoxRelayDemux").apply {
+            isDaemon = true
+            start()
         }
+        AppLog.i("ControlChannel", "已提交 Hello，读线程已启动")
     }
 
     /** 发送 Ready 消息（电脑端收到后开始推流）。 */
@@ -82,7 +84,7 @@ class ControlChannel(private val tunnel: RelayTunnel) {
         val msg = JSONObject()
             .put("Type", TYPE_READY)
             .put("Ready", true)
-        writeLine(msg.toString())
+        enqueueWrite { writeLine(msg.toString()) }
     }
 
     /**
@@ -99,15 +101,16 @@ class ControlChannel(private val tunnel: RelayTunnel) {
             .put("ScanCode", scanCode)
             .put("IsDown", isDown)
             .put("Timestamp", System.currentTimeMillis())
-        writeLine(msg.toString())
+        enqueueWrite { writeLine(msg.toString()) }
     }
 
-    /** 断开连接并停止读线程。 */
+    /** 断开连接、停止读线程并关闭写队列（未发送的写被丢弃）。 */
     fun disconnect() {
         running.set(false)
         tunnel.close()
         readerThread?.interrupt()
         readerThread = null
+        writeExecutor.shutdownNow()
     }
 
     private fun sendHello() {
@@ -116,11 +119,39 @@ class ControlChannel(private val tunnel: RelayTunnel) {
             .put("ClientType", "android")
             .put("Version", "1.0")
             .put("Token", "")
-        writeLine(msg.toString())
+        enqueueWrite(
+            { writeLine(msg.toString()) },
+            onFailure = { e ->
+                // Hello 写失败时报告连接失败；与读线程的 onDisconnected 通过 running 互斥，避免重复回调。
+                if (running.getAndSet(false)) {
+                    listener?.onError(e.message ?: "控制通道启动失败")
+                }
+            }
+        )
     }
 
     private fun writeLine(line: String) {
         tunnel.writeLine(line)
+    }
+
+    /**
+     * 把一次网络写提交到单线程写队列，串行执行以保证消息顺序（尤其是按键 down/up）。
+     * 写异常只在写线程内记录（可选 [onFailure] 回调），绝不抛回调用线程（如 UI 线程）。
+     */
+    private fun enqueueWrite(task: () -> Unit, onFailure: ((Exception) -> Unit)? = null) {
+        try {
+            writeExecutor.execute {
+                try {
+                    task()
+                } catch (e: Exception) {
+                    AppLog.e("ControlChannel", "写隧道失败: ${e.message}", e)
+                    onFailure?.invoke(e)
+                }
+            }
+        } catch (e: Exception) {
+            // 写队列已 shutdown 等场景：丢弃本次写并记录，避免影响调用方。
+            AppLog.w("ControlChannel", "写队列不可用，写操作被丢弃: ${e.message}")
+        }
     }
 
     /** 统一读线程：按帧读取并分发控制（0x01）与视频（0x02）。 */
@@ -144,8 +175,9 @@ class ControlChannel(private val tunnel: RelayTunnel) {
             if (running.getAndSet(false)) {
                 listener?.onDisconnected()
             }
-            // 复位连接状态（供下次重新 join）。
+            // 复位连接状态（供下次重新 join），并关闭写队列避免遗留后台线程。
             tunnel.close()
+            writeExecutor.shutdownNow()
         }
     }
 

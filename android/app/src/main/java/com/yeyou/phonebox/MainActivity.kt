@@ -72,11 +72,13 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     @Volatile
     private var channel: ControlChannel? = null
 
+    @Volatile
     private var keySender: KeyEventSender? = null
 
     @Volatile
     private var decoder: VideoDecoder? = null
 
+    @Volatile
     private var tunnel: RelayTunnel? = null
 
     /** 编辑面板当前选中的按键。 */
@@ -346,7 +348,9 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             try {
                 val t = RelayTunnel()
                 t.join(trimmed)
-                runOnUiThread { connectTo(t) }
+                // connectTo 内会调用 ctrl.connect() → sendHello() 进行网络写，
+                // 必须保持在本后台线程执行，绝不能再 runOnUiThread 回主线程。
+                connectTo(t)
             } catch (e: Exception) {
                 AppLog.e("MainActivity", "连接中继服务器失败", e)
                 runOnUiThread { showError(getString(R.string.status_error, e.message ?: "连接失败")) }
@@ -496,6 +500,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
         decoder = videoDecoder
 
         // 解码器就绪后再发 Ready，确保主机开始推流时能立即收帧解码。
+        // Ready 的网络写已由 ControlChannel 内部统一写队列承担（后台串行），这里直接调用即可。
         channel?.sendReady()
         setStatusTransient(R.string.status_streaming)
     }
