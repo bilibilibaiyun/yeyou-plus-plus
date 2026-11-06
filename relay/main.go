@@ -67,6 +67,11 @@ func main() {
 
 func handle(conn net.Conn) {
 	remote := conn.RemoteAddr().String()
+	// 禁用 Nagle 算法：联机是低延迟实时场景（视频流 + 按键控制），
+	// Nagle 会把小包（如按键控制消息）延迟等待合并，导致操作响应变慢。
+	if tcp, ok := conn.(*net.TCPConn); ok {
+		_ = tcp.SetNoDelay(true)
+	}
 	reader := bufio.NewReader(conn)
 	// 读第一行（HOST/JOIN）时设 15 秒超时，防止恶意连接占坑不发数据。
 	_ = conn.SetReadDeadline(time.Now().Add(15 * time.Second))

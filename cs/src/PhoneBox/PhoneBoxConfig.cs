@@ -22,10 +22,10 @@ namespace YeyouPlusPlus.PhoneBox
         public int Height { get; set; } = 720;
 
         /// <summary>目标帧率。</summary>
-        public int FrameRate { get; set; } = 30;
+        public int FrameRate { get; set; } = 24;
 
         /// <summary>目标码率（kbps）。</summary>
-        public int BitrateKbps { get; set; } = 2500;
+        public int BitrateKbps { get; set; } = 1200;
 
         /// <summary>默认按键布局（JSON 字符串，供手机端渲染按钮）。</summary>
         public string KeyLayout { get; set; } = DefaultKeyLayout;
