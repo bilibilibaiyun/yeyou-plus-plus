@@ -84,7 +84,7 @@ class ControlChannel(private val tunnel: RelayTunnel) {
         val msg = JSONObject()
             .put("Type", TYPE_READY)
             .put("Ready", true)
-        enqueueWrite { writeLine(msg.toString()) }
+        enqueueWrite({ writeLine(msg.toString()) })
     }
 
     /**
@@ -101,7 +101,7 @@ class ControlChannel(private val tunnel: RelayTunnel) {
             .put("ScanCode", scanCode)
             .put("IsDown", isDown)
             .put("Timestamp", System.currentTimeMillis())
-        enqueueWrite { writeLine(msg.toString()) }
+        enqueueWrite({ writeLine(msg.toString()) })
     }
 
     /** 断开连接、停止读线程并关闭写队列（未发送的写被丢弃）。 */
