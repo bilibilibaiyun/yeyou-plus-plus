@@ -352,14 +352,12 @@ namespace YeyouPlusPlus.PhoneBox
         {
             try
             {
-                IntPtr version = WelsGetCodecVersion();
-                if (version != IntPtr.Zero)
-                {
-                    int major = Marshal.ReadInt32(version, 0);
-                    int minor = Marshal.ReadInt32(version, 4);
-                    int revision = Marshal.ReadInt32(version, 8);
-                    PhoneBoxLog.Info("OpenH264 版本：" + major + "." + minor + "." + revision + "。");
-                }
+                // 注意：WelsGetCodecVersion 的实际签名为 void WelsGetCodecVersion(OpenH264Version* pVersion)，
+                // 必须用 WelsGetCodecVersionEx 并传入结构体指针；若误声明为「无参返回字符串」，
+                // 函数内部会向空指针写入版本号，直接触发访问冲突（0xc0000005）导致进程崩溃。
+                var version = new OpenH264Version();
+                WelsGetCodecVersionEx(ref version);
+                PhoneBoxLog.Info("OpenH264 版本：" + version.uMajor + "." + version.uMinor + "." + version.uRevision + "。");
             }
             catch (Exception ex)
             {
@@ -619,7 +617,7 @@ namespace YeyouPlusPlus.PhoneBox
         private static extern void WelsDestroySVCEncoder(IntPtr pEncoder);
 
         [DllImport("openh264", CallingConvention = CallingConvention.Cdecl)]
-        private static extern IntPtr WelsGetCodecVersion();
+        private static extern void WelsGetCodecVersionEx(ref OpenH264Version version);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate int InitializeDelegate(IntPtr self, IntPtr pParam);
@@ -728,6 +726,15 @@ namespace YeyouPlusPlus.PhoneBox
             [MarshalAs(UnmanagedType.I1)] public bool bIsLosslessLink;
             [MarshalAs(UnmanagedType.I1)] public bool bFixRCOverShoot;
             public int iIdrBitrateRatio;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct OpenH264Version
+        {
+            public uint uMajor;
+            public uint uMinor;
+            public uint uRevision;
+            public uint uReserved;
         }
 
         [StructLayout(LayoutKind.Sequential)]
