@@ -131,8 +131,9 @@ namespace YeyouPlusPlus.PhoneBox
                     opened = true;
                     frameTimestampMs = 0;
                 }
-                catch
+                catch (Exception ex)
                 {
+                    PhoneBoxLog.Error("OpenH264 编码器打开失败：" + ex.Message);
                     ReleaseEncoder();
                     throw;
                 }
@@ -317,6 +318,9 @@ namespace YeyouPlusPlus.PhoneBox
                 throw new InvalidOperationException("WelsCreateSVCEncoder 失败（返回 " + rv + "）。");
             }
 
+            // 记录实际加载的 OpenH264 版本，便于在 vtable 解析异常时定位版本不匹配问题。
+            LogEncoderVersion();
+
             // encoder 是 C++ 对象指针，其首字段为 vtable 指针。
             vtable = Marshal.ReadIntPtr(encoder);
 
@@ -337,6 +341,30 @@ namespace YeyouPlusPlus.PhoneBox
                 throw new InvalidOperationException("OpenH264 vtable 槽位 " + slot + " 为空。");
             }
             return Marshal.GetDelegateForFunctionPointer<TDelegate>(fn);
+        }
+
+        /// <summary>
+        /// 读取 OpenH264 运行时版本并记录日志。vtable 布局依赖 OpenH264 2.x 的
+        /// ISVCEncoder 接口，若版本不匹配导致编码失败，日志中的版本号可用于定位。
+        /// 读取失败仅记 WARN，不影响编码流程。
+        /// </summary>
+        private static void LogEncoderVersion()
+        {
+            try
+            {
+                IntPtr version = WelsGetCodecVersion();
+                if (version != IntPtr.Zero)
+                {
+                    int major = Marshal.ReadInt32(version, 0);
+                    int minor = Marshal.ReadInt32(version, 4);
+                    int revision = Marshal.ReadInt32(version, 8);
+                    PhoneBoxLog.Info("OpenH264 版本：" + major + "." + minor + "." + revision + "。");
+                }
+            }
+            catch (Exception ex)
+            {
+                PhoneBoxLog.Warn("读取 OpenH264 版本失败：" + ex.Message);
+            }
         }
 
         /// <summary>用 GetDefaultParams + 定制参数初始化编码器。</summary>
@@ -589,6 +617,9 @@ namespace YeyouPlusPlus.PhoneBox
 
         [DllImport("openh264", CallingConvention = CallingConvention.Cdecl)]
         private static extern void WelsDestroySVCEncoder(IntPtr pEncoder);
+
+        [DllImport("openh264", CallingConvention = CallingConvention.Cdecl)]
+        private static extern IntPtr WelsGetCodecVersion();
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate int InitializeDelegate(IntPtr self, IntPtr pParam);

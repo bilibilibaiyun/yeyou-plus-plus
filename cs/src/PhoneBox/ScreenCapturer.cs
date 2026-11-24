@@ -21,6 +21,12 @@ namespace YeyouPlusPlus.PhoneBox
         private const uint BiRgb = 0;
         private const uint DibRgbColors = 0;
 
+        // 抓屏像素拷贝缓冲复用：src(32bpp) / dst(24bpp) 大数组按需增长并跨帧复用，
+        // 避免 @30fps 每帧重复分配约 15MB 临时数组造成 GC 压力。
+        private static readonly object BufferSync = new object();
+        private static byte[] srcBuffer;
+        private static byte[] dstBuffer;
+
         [StructLayout(LayoutKind.Sequential)]
         private struct RECT
         {
@@ -280,37 +286,54 @@ namespace YeyouPlusPlus.PhoneBox
         private static Bitmap BuildOpaqueBitmap(IntPtr bits, int width, int height)
         {
             int srcStride = width * 4; // 32bpp DIB，每行无填充
+            int srcLength = srcStride * height;
             var result = new Bitmap(width, height, PixelFormat.Format24bppRgb);
             var rect = new Rectangle(0, 0, width, height);
             var data = result.LockBits(rect, ImageLockMode.WriteOnly, PixelFormat.Format24bppRgb);
             try
             {
                 int dstStride = data.Stride;
-                var src = new byte[srcStride * height];
-                var dst = new byte[dstStride * height];
-                Marshal.Copy(bits, src, 0, src.Length);
+                int dstLength = dstStride * height;
 
-                for (int y = 0; y < height; y++)
+                // 复用成员级大缓冲（src/dst），仅在尺寸变化时重新分配，避免每帧大数组 GC。
+                lock (BufferSync)
                 {
-                    int sr = y * srcStride;
-                    int dr = y * dstStride;
-                    for (int x = 0; x < width; x++)
-                    {
-                        int si = sr + x * 4;  // B, G, R, A
-                        int di = dr + x * 3;  // B, G, R
-                        dst[di] = src[si];
-                        dst[di + 1] = src[si + 1];
-                        dst[di + 2] = src[si + 2];
-                    }
-                }
+                    EnsureBuffer(ref srcBuffer, srcLength);
+                    EnsureBuffer(ref dstBuffer, dstLength);
 
-                Marshal.Copy(dst, 0, data.Scan0, dst.Length);
+                    Marshal.Copy(bits, srcBuffer, 0, srcLength);
+
+                    for (int y = 0; y < height; y++)
+                    {
+                        int sr = y * srcStride;
+                        int dr = y * dstStride;
+                        for (int x = 0; x < width; x++)
+                        {
+                            int si = sr + x * 4;  // B, G, R, A
+                            int di = dr + x * 3;  // B, G, R
+                            dstBuffer[di] = srcBuffer[si];
+                            dstBuffer[di + 1] = srcBuffer[si + 1];
+                            dstBuffer[di + 2] = srcBuffer[si + 2];
+                        }
+                    }
+
+                    Marshal.Copy(dstBuffer, 0, data.Scan0, dstLength);
+                }
             }
             finally
             {
                 result.UnlockBits(data);
             }
             return result;
+        }
+
+        /// <summary>确保成员级缓冲足够大；不足时重新分配。</summary>
+        private static void EnsureBuffer(ref byte[] buffer, int length)
+        {
+            if (buffer == null || buffer.Length < length)
+            {
+                buffer = new byte[length];
+            }
         }
 
         /// <summary>

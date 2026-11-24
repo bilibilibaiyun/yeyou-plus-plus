@@ -80,7 +80,8 @@ namespace YeyouPlusPlus
                 int height = Math.Max(2, (config.Height / 2) * 2);
                 VideoFrame.Width = width;
                 VideoFrame.Height = height;
-                // 电脑端从机不做虚拟按键映射，只透传真实键盘按键（见 VirtualKeyOverlay.MapPhysicalKey）。
+                // 应用主机下发的虚拟按键布局；解析失败则回退默认布局。
+                keyOverlay.SetKeys(ClientKeyLayout.Parse(config.KeyLayout) ?? ClientKeyLayout.Default());
             }));
 
             // 打开解码器后再发 Ready，确保主机开始推流时解码器已就绪。

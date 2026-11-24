@@ -92,11 +92,15 @@ class VirtualGamepadView @JvmOverloads constructor(
         invalidate()
     }
 
-    /** 更新某个按键（保留 id），并触发 onLayoutChanged。 */
+    /** 更新某个按键（保留 id），仅更新内存布局；持久化由 [notifyLayoutChanged] 显式触发。 */
     fun updateButton(updated: GamepadButton) {
         buttons = buttons.map { if (it.id == updated.id) updated else it }
-        listener?.onLayoutChanged(buttons)
         invalidate()
+    }
+
+    /** 通知上层布局已变化（用于拖动/滑动结束后一次性持久化，避免高频写盘）。 */
+    fun notifyLayoutChanged() {
+        listener?.onLayoutChanged(buttons)
     }
 
     // ---- 几何 ----
@@ -244,8 +248,12 @@ class VirtualGamepadView @JvmOverloads constructor(
             }
             MotionEvent.ACTION_UP,
             MotionEvent.ACTION_CANCEL -> {
+                val wasDragging = draggingId >= 0
                 draggingId = -1
                 dragPointerId = -1
+                if (wasDragging) {
+                    notifyLayoutChanged()
+                }
                 return true
             }
         }

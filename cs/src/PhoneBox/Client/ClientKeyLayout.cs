@@ -59,6 +59,23 @@ namespace YeyouPlusPlus.PhoneBox.Client
                 { "d", new[] { 0.72, 0.50 } }
             };
 
+        private static readonly Dictionary<string, string> NameToLabel =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "up", "↑" },
+                { "down", "↓" },
+                { "left", "←" },
+                { "right", "→" },
+                { "action1", "A" },
+                { "action2", "B" },
+                { "action3", "C" },
+                { "action4", "D" },
+                { "a", "A" },
+                { "b", "B" },
+                { "c", "C" },
+                { "d", "D" }
+            };
+
         /// <summary>解析 KeyLayout JSON。失败或为空时返回 null（调用方回退 <see cref="Default"/>）。</summary>
         public static IReadOnlyList<ClientKeyDefinition> Parse(string json)
         {
@@ -92,10 +109,10 @@ namespace YeyouPlusPlus.PhoneBox.Client
                     }
 
                     string name = k.Value<string>("name") ?? string.Empty;
-                    string label = k.Value<string>("label") ?? name;
+                    string label = k.Value<string>("label");
                     if (string.IsNullOrEmpty(label))
                     {
-                        label = name;
+                        label = ResolveLabel(name);
                     }
 
                     double x = k.Value<double?>("x") ?? double.NaN;
@@ -140,8 +157,8 @@ namespace YeyouPlusPlus.PhoneBox.Client
                 Create("down", "↓", 40),
                 Create("left", "←", 37),
                 Create("right", "→", 39),
-                Create("action1", "X", 88),
-                Create("action2", "Z", 90)
+                Create("action1", "A", 88),
+                Create("action2", "B", 90)
             };
         }
 
@@ -172,6 +189,17 @@ namespace YeyouPlusPlus.PhoneBox.Client
             double x = index <= 0 ? 0.5 : 0.18 + 0.64 * ((index - 1) % 4) / 3.0;
             double y = index <= 0 ? 0.65 : 0.35;
             return new[] { x, y };
+        }
+
+        /// <summary>把主机 KeyLayout 的 name 解析为按键显示文字（与 Android 端保持一致）。</summary>
+        private static string ResolveLabel(string name)
+        {
+            string label;
+            if (!string.IsNullOrEmpty(name) && NameToLabel.TryGetValue(name, out label))
+            {
+                return label;
+            }
+            return string.IsNullOrEmpty(name) ? "键" : name;
         }
 
         private static double Clamp(double value, double min, double max)

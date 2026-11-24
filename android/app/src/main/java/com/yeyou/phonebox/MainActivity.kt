@@ -160,7 +160,10 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar) {
+                // 拖动结束时才持久化一次，避免每次 onProgressChanged 都写 SharedPreferences。
+                gamepadView.notifyLayoutChanged()
+            }
         })
 
         editOpacitySeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -172,7 +175,10 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar) {
+                // 拖动结束时才持久化一次，避免每次 onProgressChanged 都写 SharedPreferences。
+                gamepadView.notifyLayoutChanged()
+            }
         })
     }
 
@@ -353,7 +359,9 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 connectTo(t)
             } catch (e: Exception) {
                 AppLog.e("MainActivity", "连接中继服务器失败", e)
-                runOnUiThread { showError(getString(R.string.status_error, e.message ?: "连接失败")) }
+                if (!isFinishing && !isDestroyed) {
+                    runOnUiThread { showError(getString(R.string.status_error, e.message ?: "连接失败")) }
+                }
             }
         }.start()
     }
@@ -367,6 +375,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             override fun onConfig(config: ControlChannel.StreamConfig) {
                 runOnUiThread {
                     this@MainActivity.config = config
+                    applyKeyLayout(config.keyLayout)
                     showGamePage()
                     tryStartStreaming()
                     adjustSurfaceAspect(config.width, config.height)
@@ -384,6 +393,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
                     if (channel === ctrl) {
                         stopStreaming()
                         config = null
+                        showHomePage()
                         setStatus(R.string.status_disconnected)
                     }
                 }
@@ -399,6 +409,16 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private fun showGamePage() {
         homePage.visibility = View.GONE
         gamePage.visibility = View.VISIBLE
+    }
+
+    /**
+     * 应用主机下发的按键布局（KeyLayout JSON，含 keys 数组，每项 name/keyCode）。
+     * 解析失败或为空时回退默认布局。
+     */
+    private fun applyKeyLayout(keyLayout: String?) {
+        val buttons = keyLayout?.let { GamepadLayoutStore.fromConfigKeyLayout(it) }
+            ?: GamepadLayoutStore.defaultButtons()
+        gamepadView.setButtons(buttons)
     }
 
     /**
@@ -464,6 +484,9 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     private fun showError(message: String) {
         AppLog.e("MainActivity", message)
+        if (isFinishing || isDestroyed) {
+            return
+        }
         resetSession()
         statusText.text = message
         AlertDialog.Builder(this)
@@ -511,11 +534,13 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
     }
 
     private fun resetSession() {
-        stopStreaming()
+        // 先断开控制通道（停止读线程），再停止解码器，避免读线程仍阻塞在
+        // MediaCodec dequeue 时并发 stop/release（MediaCodec 非线程安全）。
         config = null
         channel?.disconnect()
         channel = null
         keySender = null
+        stopStreaming()
         tunnel?.close()
         tunnel = null
     }
@@ -574,6 +599,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback {
             .setItems(labels) { _, which ->
                 val opt = KeyCodes.all[which]
                 gamepadView.updateButton(b.copy(keyCode = opt.code, label = opt.label))
+                gamepadView.notifyLayoutChanged()
                 onSelectButton(b.copy(keyCode = opt.code, label = opt.label))
             }
             .show()

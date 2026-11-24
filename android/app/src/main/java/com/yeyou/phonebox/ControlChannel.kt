@@ -48,6 +48,8 @@ class ControlChannel(private val tunnel: RelayTunnel) {
     var videoFrameListener: ((ByteArray) -> Unit)? = null
 
     private val running = AtomicBoolean(false)
+
+    @Volatile
     private var readerThread: Thread? = null
 
     /** 单线程写队列：所有控制写（Hello/Ready/Key）串行提交，保证 down/up 顺序且不落在主线程。 */

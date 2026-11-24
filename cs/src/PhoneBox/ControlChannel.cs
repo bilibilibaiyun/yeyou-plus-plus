@@ -170,6 +170,21 @@ namespace YeyouPlusPlus.PhoneBox
                     PhoneBoxLog.Warn("副设备握手口令校验失败，连接被拒绝。");
                     return false;
                 }
+
+                // ClientType / Version 仅做记录与告警，不据此强制断开连接。
+                if (string.IsNullOrWhiteSpace(hello.ClientType))
+                {
+                    PhoneBoxLog.Warn("副设备握手 ClientType 为空。");
+                }
+                else if (!string.Equals(hello.ClientType, "android", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(hello.ClientType, "desktop", StringComparison.OrdinalIgnoreCase))
+                {
+                    PhoneBoxLog.Warn("副设备握手 ClientType 未知：" + hello.ClientType + "。");
+                }
+                PhoneBoxLog.Info(
+                    "副设备握手：ClientType=" + hello.ClientType
+                    + "，Version=" + hello.Version + "。");
+
                 SendConfig();
                 RaiseClientConnected();
                 RaiseHelloReceived(hello);

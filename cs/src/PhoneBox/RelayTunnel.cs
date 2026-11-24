@@ -266,20 +266,24 @@ namespace YeyouPlusPlus.PhoneBox
             WriteFrame(FrameTypeControl, data);
         }
 
-        /// <summary>读取一行控制消息（内部从 type=0x01 帧解出）；非控制帧或失败返回 null。</summary>
+        /// <summary>读取一行控制消息（内部从 type=0x01 帧解出）；非控制帧会跳过继续读，直到读到控制帧或断线。</summary>
         public string ReadLine()
         {
-            byte type;
-            byte[] data;
-            if (!ReadFrame(out type, out data))
+            while (true)
             {
-                return null;
+                byte type;
+                byte[] data;
+                if (!ReadFrame(out type, out data))
+                {
+                    // 真正断线 / 读失败。
+                    return null;
+                }
+                if (type == FrameTypeControl)
+                {
+                    return Encoding.UTF8.GetString(data);
+                }
+                // 非控制帧（如视频帧）跳过，继续读下一帧，避免误判为断线。
             }
-            if (type != FrameTypeControl)
-            {
-                return null;
-            }
-            return Encoding.UTF8.GetString(data);
         }
 
         /// <summary>关闭隧道并释放 socket。</summary>

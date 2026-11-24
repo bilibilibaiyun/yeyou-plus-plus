@@ -4,6 +4,8 @@
 > 作者：software-architect（Bob）
 > 需求依据：PRD（software-product-manager）+ 用户已拍板决策（仅 Android / 不自建服务器 / WebRTC+免费STUN 打洞、失败提示不上 TURN）
 > 状态：设计阶段，不写实现代码
+>
+> ⚠️ **已废弃/历史**：本文为旧版「局域网 UDP RTP + EasyTier 跨网络」设计稿；当前实现已迁移为「云中继服务器中转」（`relay/main.go`，8 位联机码 + 双向字节流转发，视频/控制统一走隧道）。以下内容仅供历史参考，不代表当前代码结构。
 
 ---
 

@@ -18,9 +18,9 @@
     <StartupObject>YeyouPlusPlus.Program</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Version>2.6.2</Version>
-    <AssemblyVersion>2.6.2.0</AssemblyVersion>
-    <FileVersion>2.6.2.0</FileVersion>
+    <Version>2.6.3</Version>
+    <AssemblyVersion>2.6.3.0</AssemblyVersion>
+    <FileVersion>2.6.3.0</FileVersion>
     <ApplicationIcon>..\..\assets\icon\app.ico</ApplicationIcon>
   </PropertyGroup>
 
@@ -29,15 +29,11 @@
     <None Include="..\..\assets\video\intro.mp4" Link="Assets\video\intro.mp4" CopyToOutputDirectory="PreserveNewest"/>
     <!-- OpenH264 软编码 native 库（Cisco 官方预编译 win64，BSD 许可）。 -->
     <None Include="native\openh264.dll" Link="openh264.dll" CopyToOutputDirectory="PreserveNewest"/>
-    <!-- EasyTier 跨网络组网运行时（AGPL-3.0，见 THIRD_PARTY_NOTICES）。 -->
-    <None Include="..\..\engine\easytier\**\*" Link="easytier\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>
 
   <ItemGroup>
     <!-- net462 默认不引用 System.Net.Http，需显式引用以使用 HttpClient。 -->
     <Reference Include="System.Net.Http" />
-    <!-- Base62 联机码编码使用 BigInteger。 -->
-    <Reference Include="System.Numerics" />
     <!-- DPAPI（ProtectedData）位于 System.Security 程序集，net462 SDK 风格工程需显式引用。 -->
     <Reference Include="System.Security" />
   </ItemGroup>

@@ -29,7 +29,7 @@ namespace YeyouPlusPlus.PhoneBox
     ///   - 捕获线程按目标帧率抓屏，写入单缓冲；
     ///   - 编码线程只取最新一帧（最新帧丢弃策略，避免队列堆积导致延迟）；
     ///   - 编码出 H.264 Annex-B 完整帧后直接经 RelayTunnel 以 type=0x02 帧发送
-    ///     （不再做 RTP 分包；UdpRtpTransport / RtpPacketizer 已不参与新链路）。
+    ///     （视频经中继隧道直发，不再做 RTP 分包）。
     /// </summary>
     public sealed class StreamingService : IDisposable
     {

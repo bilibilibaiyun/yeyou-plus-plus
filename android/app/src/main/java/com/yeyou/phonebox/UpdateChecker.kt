@@ -3,6 +3,7 @@ package com.yeyou.phonebox
 import org.json.JSONArray
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -66,28 +67,50 @@ object UpdateChecker {
         conn.connectTimeout = 15000
         conn.readTimeout = 60000
         conn.setRequestProperty("User-Agent", "YeyouPlusPlus-PhoneBox")
+        var input: InputStream? = null
+        var output: FileOutputStream? = null
         try {
             val code = conn.responseCode
             if (code !in 200..299) {
                 throw Exception("下载失败：HTTP $code")
             }
             val total = conn.contentLengthLong
-            val input = conn.inputStream
-            val output = FileOutputStream(dest)
+            val inp = conn.inputStream
+            val out = FileOutputStream(dest)
+            input = inp
+            output = out
             val buf = ByteArray(8192)
-            var read: Int
             var downloaded = 0L
-            while (input.read(buf).also { read = it } != -1) {
-                output.write(buf, 0, read)
+            while (true) {
+                val read = inp.read(buf)
+                if (read == -1) {
+                    break
+                }
+                out.write(buf, 0, read)
                 downloaded += read
                 if (total > 0) {
                     onProgress?.invoke(((downloaded * 100) / total).toInt())
                 }
             }
-            output.flush()
-            output.close()
-            input.close()
+            out.flush()
+        } catch (e: Exception) {
+            // 下载中断时删除残留的半截 APK，避免下次误装损坏文件。
+            try {
+                if (dest.exists()) {
+                    dest.delete()
+                }
+            } catch (_: Exception) {
+            }
+            throw e
         } finally {
+            try {
+                output?.close()
+            } catch (_: Exception) {
+            }
+            try {
+                input?.close()
+            } catch (_: Exception) {
+            }
             conn.disconnect()
         }
     }

@@ -96,18 +96,18 @@ namespace YeyouPlusPlus.PhoneBox.Client
         /// <summary>停止读线程并关闭隧道。</summary>
         public void Disconnect()
         {
-            Thread t;
+            Thread t = null;
             lock (sync)
             {
-                if (!running)
+                if (running)
                 {
-                    return;
+                    running = false;
+                    t = readerThread;
+                    readerThread = null;
                 }
-                running = false;
-                t = readerThread;
-                readerThread = null;
             }
 
+            // 无论 running 状态如何，都关闭隧道以复位连接状态（幂等），避免远端断开后 socket 泄漏。
             tunnel.Close();
 
             if (t != null && t != Thread.CurrentThread)
@@ -173,6 +173,8 @@ namespace YeyouPlusPlus.PhoneBox.Client
                     wasRunning = running;
                     running = false;
                 }
+                // 远端断开时也必须关闭隧道（Disconnect 可能因 running 已为 false 而提前返回）。
+                tunnel.Close();
                 if (wasRunning)
                 {
                     RaiseDisconnected();

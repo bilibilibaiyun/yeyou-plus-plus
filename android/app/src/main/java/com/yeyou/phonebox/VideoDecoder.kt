@@ -15,6 +15,10 @@ import android.view.Surface
  */
 class VideoDecoder(private val surface: Surface) {
 
+    /** 保护 codec 生命周期：start/feed/stop 可能被不同线程并发调用。 */
+    private val lock = Any()
+
+    @Volatile
     private var codec: MediaCodec? = null
     private val bufferInfo = MediaCodec.BufferInfo()
 
@@ -29,28 +33,30 @@ class VideoDecoder(private val surface: Surface) {
      * @return true=成功，false=启动失败
      */
     fun start(width: Int, height: Int): Boolean {
-        if (started) {
-            return true
-        }
+        synchronized(lock) {
+            if (started) {
+                return true
+            }
 
-        return try {
-            val format = MediaFormat.createVideoFormat(
-                MediaFormat.MIMETYPE_VIDEO_AVC,
-                if (width > 0) width else 1280,
-                if (height > 0) height else 720
-            )
-            // 关键帧间隔、码率、SPS/PPS 等信息由码流提供，这里不强设 csd。
-            val decoder = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-            decoder.configure(format, surface, null, 0)
-            decoder.start()
+            return try {
+                val format = MediaFormat.createVideoFormat(
+                    MediaFormat.MIMETYPE_VIDEO_AVC,
+                    if (width > 0) width else 1280,
+                    if (height > 0) height else 720
+                )
+                // 关键帧间隔、码率、SPS/PPS 等信息由码流提供，这里不强设 csd。
+                val decoder = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                decoder.configure(format, surface, null, 0)
+                decoder.start()
 
-            codec = decoder
-            started = true
-            true
-        } catch (e: Exception) {
-            started = false
-            codec = null
-            false
+                codec = decoder
+                started = true
+                true
+            } catch (e: Exception) {
+                started = false
+                codec = null
+                false
+            }
         }
     }
 
@@ -64,33 +70,43 @@ class VideoDecoder(private val surface: Surface) {
      * 以防 UDP 线程被无限阻塞。
      */
     fun feed(frame: ByteArray) {
-        val decoder = codec ?: return
-        if (!started) {
-            return
-        }
-
-        try {
-            var inIndex = -1
-            var attempts = 0
-            while (inIndex < 0 && attempts < 8) {
-                inIndex = decoder.dequeueInputBuffer(5_000) // 5ms
-                if (inIndex < 0) {
-                    attempts++
-                }
+        synchronized(lock) {
+            val decoder = codec ?: return
+            if (!started) {
+                return
             }
 
-            if (inIndex >= 0) {
-                val inputBuffer = decoder.getInputBuffer(inIndex)
-                if (inputBuffer != null && frame.size <= inputBuffer.capacity()) {
-                    inputBuffer.clear()
-                    inputBuffer.put(frame)
-                    // PTS 统一为 0：直播投屏以「尽快上屏」为目标，不做回放时戳校准。
-                    decoder.queueInputBuffer(inIndex, 0, frame.size, 0L, 0)
+            try {
+                var inIndex = -1
+                var attempts = 0
+                while (inIndex < 0 && attempts < 8) {
+                    inIndex = decoder.dequeueInputBuffer(5_000) // 5ms
+                    if (inIndex < 0) {
+                        attempts++
+                    }
                 }
+
+                if (inIndex >= 0) {
+                    val inputBuffer = decoder.getInputBuffer(inIndex)
+                    if (inputBuffer != null) {
+                        if (frame.size <= inputBuffer.capacity()) {
+                            inputBuffer.clear()
+                            inputBuffer.put(frame)
+                            // PTS 统一为 0：直播投屏以「尽快上屏」为目标，不做回放时戳校准。
+                            decoder.queueInputBuffer(inIndex, 0, frame.size, 0L, 0)
+                        } else {
+                            // 超大帧无法放入输入缓冲：记日志后丢弃，便于诊断无提示黑屏。
+                            AppLog.w(
+                                "VideoDecoder",
+                                "丢弃超大帧：${frame.size} 字节 > 输入缓冲 ${inputBuffer.capacity()} 字节"
+                            )
+                        }
+                    }
+                }
+                drain(decoder)
+            } catch (e: Exception) {
+                // 单帧异常不终止解码。
             }
-            drain(decoder)
-        } catch (e: Exception) {
-            // 单帧异常不终止解码。
         }
     }
 
@@ -115,17 +131,19 @@ class VideoDecoder(private val surface: Surface) {
 
     /** 停止并释放解码器。 */
     fun stop() {
-        started = false
-        val decoder = codec
-        codec = null
-        if (decoder != null) {
-            try {
-                decoder.stop()
-            } catch (_: Exception) {
-            }
-            try {
-                decoder.release()
-            } catch (_: Exception) {
+        synchronized(lock) {
+            started = false
+            val decoder = codec
+            codec = null
+            if (decoder != null) {
+                try {
+                    decoder.stop()
+                } catch (_: Exception) {
+                }
+                try {
+                    decoder.release()
+                } catch (_: Exception) {
+                }
             }
         }
     }

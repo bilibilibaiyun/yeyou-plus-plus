@@ -37,11 +37,12 @@ namespace YeyouPlusPlus
 
         private async void HostGenerateButton_Click(object sender, RoutedEventArgs e)
         {
+            RelayTunnel tunnel = null;
             try
             {
                 HostStatusText.Text = "正在连接中继服务器...";
 
-                var tunnel = new RelayTunnel();
+                tunnel = new RelayTunnel();
                 var code = await Task.Run(() => tunnel.SendHost());
 
                 var control = new ControlChannel(config, tunnel);
@@ -52,6 +53,8 @@ namespace YeyouPlusPlus
 
                 hostTunnel = tunnel;
                 hostControl = control;
+                // 隧道所有权已移交，后续异常不再重复释放。
+                tunnel = null;
 
                 HostCodeText.Text = code;
                 control.Start();
@@ -63,6 +66,10 @@ namespace YeyouPlusPlus
             {
                 PhoneBoxLog.Error("连接中继服务器失败：" + ex);
                 HostStatusText.Text = "连接失败：" + ex.Message;
+                if (tunnel != null)
+                {
+                    tunnel.Dispose();
+                }
             }
             UpdateHostUi();
         }
@@ -127,6 +134,19 @@ namespace YeyouPlusPlus
             {
                 StopHostStreaming();
                 hostStarted = false;
+                // 释放本次会话的控制通道与隧道（幂等），供下次重新开房。
+                var control = hostControl;
+                hostControl = null;
+                if (control != null)
+                {
+                    control.Dispose();
+                }
+                var tunnel = hostTunnel;
+                hostTunnel = null;
+                if (tunnel != null)
+                {
+                    tunnel.Dispose();
+                }
                 HostStatusText.Text = "副设备已断开。";
                 UpdateHostUi();
             }));
@@ -137,7 +157,11 @@ namespace YeyouPlusPlus
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 StartHostStreaming();
-                HostStatusText.Text = "副设备已就绪，推流中...";
+                // 仅当推流真正启动后才提示「推流中」，避免覆盖 StartHostStreaming 失败时的错误提示。
+                if (hostStreaming != null && hostStreaming.IsRunning)
+                {
+                    HostStatusText.Text = "副设备已就绪，推流中...";
+                }
             }));
         }
 
@@ -161,14 +185,46 @@ namespace YeyouPlusPlus
                 return;
             }
 
-            var encoder = new VideoEncoder();
-            var streaming = new StreamingService(config, tunnel, encoder);
-            if (CaptureWindowProvider != null)
+            try
             {
-                streaming.CaptureWindow = CaptureWindowProvider();
+                var encoder = new VideoEncoder();
+                var streaming = new StreamingService(config, tunnel, encoder);
+                if (CaptureWindowProvider != null)
+                {
+                    streaming.CaptureWindow = CaptureWindowProvider();
+                }
+                hostStreaming = streaming;
+                streaming.Start();
             }
-            hostStreaming = streaming;
-            streaming.Start();
+            catch (Exception ex)
+            {
+                // 编码器 Open 失败（如 openh264.dll 缺失）等不应导致进程崩溃，转成可恢复提示。
+                PhoneBoxLog.Error("推流启动失败：" + ex);
+                hostStopping = true;
+                try
+                {
+                    StopHostStreaming();
+                    var control = hostControl;
+                    hostControl = null;
+                    if (control != null)
+                    {
+                        control.Dispose();
+                    }
+                    var t = hostTunnel;
+                    hostTunnel = null;
+                    if (t != null)
+                    {
+                        t.Dispose();
+                    }
+                    hostStarted = false;
+                    HostStatusText.Text = "推流启动失败：" + ex.Message;
+                }
+                finally
+                {
+                    hostStopping = false;
+                }
+                UpdateHostUi();
+            }
         }
 
         private void StopHostStreaming()
@@ -200,17 +256,29 @@ namespace YeyouPlusPlus
 
             ClientConnectButton.IsEnabled = false;
             ClientStatusText.Text = "正在连接中继服务器并配对...";
+            RelayTunnel tunnel = null;
             try
             {
-                var tunnel = new RelayTunnel();
+                tunnel = new RelayTunnel();
                 await Task.Run(() => tunnel.Join(code));
                 ClientStatusText.Text = "配对成功，正在打开画面标签页...";
-                ClientTabRequested?.Invoke(tunnel);
+                var handler = ClientTabRequested;
+                if (handler == null)
+                {
+                    throw new InvalidOperationException("未注册从机标签页处理程序。");
+                }
+                handler(tunnel);
+                // 隧道所有权已移交标签页，后续异常不再重复释放。
+                tunnel = null;
             }
             catch (Exception ex)
             {
                 PhoneBoxLog.Error("从机连接失败：" + ex);
                 ClientStatusText.Text = "连接失败：" + ex.Message;
+                if (tunnel != null)
+                {
+                    tunnel.Dispose();
+                }
             }
             finally
             {

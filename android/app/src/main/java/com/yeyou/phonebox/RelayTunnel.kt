@@ -36,8 +36,13 @@ class RelayTunnel(
 
     private val writeLock = Any()
 
+    @Volatile
     private var socket: Socket? = null
+
+    @Volatile
     private var input: DataInputStream? = null
+
+    @Volatile
     private var output: DataOutputStream? = null
 
     /** 是否已连接中继服务器。 */

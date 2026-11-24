@@ -21,10 +21,18 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-const hostWaitTimeout = 5 * time.Minute // 主设备开房后等待副设备加入的最长时间
+const (
+	hostWaitTimeout = 5 * time.Minute // 主设备开房后等待副设备加入的最长时间
+
+	maxConnections = 200 // 全局连接数上限，超出直接关闭，缓解连接耗尽型 DoS
+
+	joinFailWindow  = time.Minute // JOIN 失败限速窗口
+	maxJoinFailures = 60          // 窗口内允许的失败 JOIN 次数（超出后短暂拒绝）
+)
 
 type session struct {
 	code        string
@@ -40,6 +48,12 @@ type session struct {
 var (
 	sessions = make(map[string]*session)
 	mu       sync.Mutex
+
+	connCount int32 // 当前活跃连接数（原子计数）
+
+	joinFailMu          sync.Mutex
+	joinFailWindowStart time.Time
+	joinFailCount       int
 )
 
 func main() {
@@ -66,6 +80,13 @@ func main() {
 }
 
 func handle(conn net.Conn) {
+	if atomic.AddInt32(&connCount, 1) > maxConnections {
+		atomic.AddInt32(&connCount, -1)
+		conn.Close()
+		return
+	}
+	defer atomic.AddInt32(&connCount, -1)
+
 	remote := conn.RemoteAddr().String()
 	// 禁用 Nagle 算法：联机是低延迟实时场景（视频流 + 按键控制），
 	// Nagle 会把小包（如按键控制消息）延迟等待合并，导致操作响应变慢。
@@ -118,10 +139,17 @@ func hostFlow(conn net.Conn, reader *bufio.Reader, remote string) {
 }
 
 func joinFlow(conn net.Conn, reader *bufio.Reader, code string, remote string) {
+	if !joinAttemptAllowed() {
+		// JOIN 失败次数过多，短暂拒绝进一步尝试，缓解 8 位码枚举。
+		conn.Close()
+		return
+	}
+
 	mu.Lock()
 	sess := sessions[code]
 	mu.Unlock()
 	if sess == nil {
+		recordJoinFailure()
 		conn.Write([]byte("NOTFOUND\n"))
 		conn.Close()
 		return
@@ -130,6 +158,7 @@ func joinFlow(conn net.Conn, reader *bufio.Reader, code string, remote string) {
 	sess.mu.Lock()
 	if sess.done || sess.guest != nil {
 		sess.mu.Unlock()
+		recordJoinFailure()
 		conn.Write([]byte("BUSY\n"))
 		conn.Close()
 		return
@@ -178,6 +207,7 @@ func closeSession(sess *session) {
 		return
 	}
 	sess.done = true
+	guest := sess.guest // 在锁内快照 guest，避免与 joinFlow 写入 sess.guest 数据竞争
 	sess.mu.Unlock()
 
 	mu.Lock()
@@ -187,9 +217,28 @@ func closeSession(sess *session) {
 	mu.Unlock()
 
 	sess.host.Close()
-	if sess.guest != nil {
-		sess.guest.Close()
+	if guest != nil {
+		guest.Close()
 	}
+}
+
+// joinAttemptAllowed 返回当前是否允许继续尝试 JOIN（基于失败计数限速）。
+func joinAttemptAllowed() bool {
+	joinFailMu.Lock()
+	defer joinFailMu.Unlock()
+	now := time.Now()
+	if now.Sub(joinFailWindowStart) >= joinFailWindow {
+		joinFailWindowStart = now
+		joinFailCount = 0
+	}
+	return joinFailCount < maxJoinFailures
+}
+
+// recordJoinFailure 记录一次失败的 JOIN 尝试。
+func recordJoinFailure() {
+	joinFailMu.Lock()
+	defer joinFailMu.Unlock()
+	joinFailCount++
 }
 
 // genCode 生成唯一的 8 位数字码（10000000 ~ 99999999）。
