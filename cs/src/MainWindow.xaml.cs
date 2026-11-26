@@ -8,6 +8,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -28,6 +29,10 @@ namespace YeyouPlusPlus
             public bool HasNavigated; // 是否已真正导航过（非 about:blank）
             public bool IsShadow;     // 影子标签（独立 RequestContext，历史不记录）
             public bool IsClient { get { return ClientView != null; } }
+            /// <summary>地址栏展示用地址（本地 swf 标签显示 swf 路径，为空则回退 Host.Address）。</summary>
+            public string DisplayAddress;
+            /// <summary>是否跳过历史记录（本地 swf 包装页是临时文件，不应入历史）。</summary>
+            public bool SkipHistory;
         }
 
         private readonly List<BrowserTab> tabs = new List<BrowserTab>();
@@ -56,6 +61,9 @@ namespace YeyouPlusPlus
         private FloatingBallWindow floatingBall;
         private readonly LowLevelKeyboardHook immersiveEscHook;
 
+        // ===== 标签切换快捷键（Ctrl+Tab / Ctrl+PageDown / Ctrl+PageUp / Ctrl+1~9） =====
+        private readonly TabSwitchHotkeyHook tabSwitchHook;
+
         // 沉浸式进入前的 UI 状态快照（退出时逐项还原）。
         private GridLength immersiveSidebarWidth;
         private GridLength immersiveShadowSidebarWidth;
@@ -79,6 +87,7 @@ namespace YeyouPlusPlus
             "地址栏输入关键词按回车，即可搜索",
             "点星标收藏当前页，收藏夹随时找回",
             "右上角可切换日间 / 夜间模式",
+            "Ctrl+Tab / Ctrl+PageDown 下一标签，Ctrl+PageUp 上一标签，Ctrl+1~9 跳转标签",
             "哔哩哔哩健谈的白云是最帅的up主"
         };
         private readonly DispatcherTimer tipsTimer;
@@ -164,7 +173,15 @@ namespace YeyouPlusPlus
             volumeTimer.Start();
 
             // 沉浸式全局 Esc 钩子：只在进入沉浸式时挂载，退出即卸载。
-            immersiveEscHook = new LowLevelKeyboardHook(ExitImmersive);
+            immersiveEscHook = new LowLevelKeyboardHook(ExitImmersive, () => new WindowInteropHelper(this).Handle);
+
+            // 标签切换快捷键钩子：常驻（Loaded 时挂载，OnClosed 卸载），
+            // 用 WH_KEYBOARD_LL 才能在 CEF 网页获得焦点时也能收到按键。
+            tabSwitchHook = new TabSwitchHotkeyHook(
+                () => new WindowInteropHelper(this).Handle,
+                SwitchToNextTab,
+                SwitchToPreviousTab,
+                SwitchToTabByNumber);
 
             // 沉浸式期间窗口 resize 时重新等比缩放 letterbox。
             SizeChanged += (s, e) =>
@@ -193,6 +210,7 @@ namespace YeyouPlusPlus
             {
                 RenderTabs();
                 RestoreVideoThemeState();
+                tabSwitchHook.Start();
             };
 
             // 远程联机面板：注入抓屏目标 + 订阅从机标签请求。
@@ -250,7 +268,8 @@ namespace YeyouPlusPlus
 
         // ================= 标签系统 =================
 
-        private int CreateTab(string initialUrl = "about:blank", IRequestContext requestContext = null)
+        private int CreateTab(string initialUrl = "about:blank", IRequestContext requestContext = null,
+            bool skipHistory = false)
         {
             // 初始 URL 直接传给 ChromiumWebBrowser 构造函数（CEF 原生机制，时序安全）；
             // 若在 OnAfterCreated 时机手动 Load 会被主 frame 未就绪吞掉（影子标签空白根因）。
@@ -258,6 +277,8 @@ namespace YeyouPlusPlus
             var tab = new BrowserTab { Host = host };
             tab.HasNavigated = initialUrl != "about:blank";
             tab.IsShadow = requestContext != null;
+            // 在事件处理器挂载前同步设置，避免依赖 Dispatcher.InvokeAsync 的隐式派发时序。
+            tab.SkipHistory = skipHistory;
 
             host.AddressChanged += (s, e) => Dispatcher.InvokeAsync(() => OnTabAddressChanged(tab));
             host.TitleChanged += (s, e) => Dispatcher.InvokeAsync(() => OnTabTitleChanged(tab));
@@ -281,16 +302,16 @@ namespace YeyouPlusPlus
                 tab.HasNavigated = true;
             }
 
-            // 导航即隐藏填充浮层；影子标签（隔离浏览）不记入主历史。
+            // 导航即隐藏填充浮层；影子标签（隔离浏览）与本地 swf 临时页不记入主历史。
             ClosePasswordFillPopup();
-            if (!tab.IsShadow)
+            if (!tab.IsShadow && !tab.SkipHistory)
             {
                 HistoryService.Record(addr, tab.Host.Title);
             }
 
             if (IsActiveTab(tab))
             {
-                AddressBox.Text = addr;
+                AddressBox.Text = !string.IsNullOrEmpty(tab.DisplayAddress) ? tab.DisplayAddress : addr;
                 UpdateNavButtons();
                 UpdateFavoriteButton();
                 CheckShadowAutoExpand();
@@ -300,7 +321,7 @@ namespace YeyouPlusPlus
         private void OnTabTitleChanged(BrowserTab tab)
         {
             tab.Title = tab.Host.Title;
-            if (!tab.IsShadow)
+            if (!tab.IsShadow && !tab.SkipHistory)
             {
                 HistoryService.UpdateTitle(tab.Host.Address, tab.Host.Title);
             }
@@ -346,6 +367,51 @@ namespace YeyouPlusPlus
             ShowView("browser");
         }
 
+        // ===== 标签切换快捷键（Ctrl+Tab / Ctrl+Shift+Tab / Ctrl+1~9） =====
+
+        private void SwitchToNextTab()
+        {
+            if (tabs.Count <= 1)
+            {
+                return;
+            }
+            int next = activeTabIndex + 1;
+            if (next >= tabs.Count)
+            {
+                next = 0;
+            }
+            SwitchTab(next);
+        }
+
+        private void SwitchToPreviousTab()
+        {
+            if (tabs.Count <= 1)
+            {
+                return;
+            }
+            int prev = activeTabIndex - 1;
+            if (prev < 0)
+            {
+                prev = tabs.Count - 1;
+            }
+            SwitchTab(prev);
+        }
+
+        private void SwitchToTabByNumber(int index)
+        {
+            if (tabs.Count == 0)
+            {
+                return;
+            }
+            // index 为 0~7 表示第 1~8 个标签；-1 表示最后一个标签（Ctrl+9）。
+            var target = index < 0 ? tabs.Count - 1 : index;
+            if (target < 0 || target >= tabs.Count)
+            {
+                return;
+            }
+            SwitchTab(target);
+        }
+
         private void ApplyActiveTab()
         {
             for (int i = 0; i < tabs.Count; i++)
@@ -366,7 +432,10 @@ namespace YeyouPlusPlus
             var h = CurrentHost;
             if (h != null)
             {
-                AddressBox.Text = h.Address;
+                var activeTab = tabs[activeTabIndex];
+                AddressBox.Text = !string.IsNullOrEmpty(activeTab.DisplayAddress)
+                    ? activeTab.DisplayAddress
+                    : h.Address;
                 UpdateNavButtons();
                 UpdateFavoriteButton();
                 CheckShadowAutoExpand();
@@ -933,6 +1002,72 @@ namespace YeyouPlusPlus
             if (e.Key == Key.Enter)
             {
                 Navigate(AddressBox.Text);
+            }
+        }
+
+        // ================= 本地 swf 游玩 =================
+
+        private void OpenLocalSwfButton_Click(object sender, RoutedEventArgs e)
+        {
+            OpenLocalSwf();
+        }
+
+        /// <summary>弹出文件选择框，选中本地 .swf 后在新标签页用 Flash 打开。</summary>
+        private void OpenLocalSwf()
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "选择本地 swf 文件",
+                Filter = "Flash 文件 (*.swf)|*.swf|所有文件 (*.*)|*.*",
+                CheckFileExists = true,
+                Multiselect = false
+            };
+
+            if (dlg.ShowDialog(this) != true)
+            {
+                return;
+            }
+
+            OpenLocalSwfFile(dlg.FileName);
+        }
+
+        /// <summary>校验并打开指定路径的本地 swf（路径含中文 / 空格亦可）。</summary>
+        private void OpenLocalSwfFile(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return;
+            }
+
+            try
+            {
+                // 兜底校验扩展名，避免用户绕过过滤器选中其它类型。
+                if (!string.Equals(Path.GetExtension(path), ".swf", StringComparison.OrdinalIgnoreCase))
+                {
+                    MessageBox.Show("请选择 .swf 格式的 Flash 文件。", "页游++",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                var wrapperUri = LocalSwfPlayer.CreateWrapper(path);
+                var swfUri = LocalSwfPlayer.ToFileUri(path);
+
+                // 新标签页加载包装 HTML，标题取 swf 文件名，地址栏展示 swf 的 file:// 路径。
+                // skipHistory 在 CreateTab 内同步设置；DisplayAddress 也在事件派发前同步赋值，
+                // 保证 OnTabAddressChanged / ApplyActiveTab 读取到最终值，不依赖隐式时序。
+                var idx = CreateTab(wrapperUri, null, skipHistory: true);
+                tabs[idx].DisplayAddress = swfUri;
+                activeTabIndex = idx;
+                ApplyActiveTab();
+                ShowView("browser");
+                AddressBox.Text = swfUri;
+                SetStatus("已打开本地 swf：" + Path.GetFileName(path));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("无法打开本地 swf：" + ex.Message, "页游++",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                SetStatus("打开本地 swf 失败");
             }
         }
 
@@ -1597,6 +1732,9 @@ namespace YeyouPlusPlus
 
             // 只在沉浸式期间挂载全局 Esc 钩子，退出即卸载。
             immersiveEscHook.Start();
+            // 沉浸式下标签栏隐藏、letterbox 绑定单一宿主，切标签无意义且会破坏缩放，
+            // 因此期间禁用标签切换快捷键，退出沉浸式时再恢复。
+            tabSwitchHook.Stop();
             floatingBall?.SetImmersive(true);
             SetStatus("已进入全屏沉浸式浏览（按 Esc 退出）");
         }
@@ -1645,6 +1783,8 @@ namespace YeyouPlusPlus
             immersive = false;
 
             immersiveEscHook.Stop();
+            // 退出沉浸式后恢复标签切换快捷键（Start 幂等，若已在运行则不会重复挂载）。
+            tabSwitchHook.Start();
 
             // 还原浏览器宿主为拉伸填充。
             if (immersiveHost != null)
@@ -2273,6 +2413,7 @@ namespace YeyouPlusPlus
 
             // 卸载沉浸式 Esc 钩子（若处于沉浸式直接关闭窗口），并关闭右下角悬浮球。
             immersiveEscHook?.Stop();
+            tabSwitchHook?.Dispose();
             floatingBall?.Close();
 
             // 关闭时最后查一次缓存阈值（后台尽力清理，不阻塞退出）。

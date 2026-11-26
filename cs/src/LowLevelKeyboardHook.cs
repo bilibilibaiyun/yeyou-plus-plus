@@ -12,6 +12,8 @@ namespace YeyouPlusPlus
     /// 说明：WH_KEYBOARD_LL 属于全局钩子，但 Windows 会通过消息循环把按键事件
     /// 派发到「安装钩子的线程」，因此回调在调用 <see cref="Start"/> 的 UI 线程执行，
     /// 可直接安全地操作 WPF 控件。
+    ///
+    /// 仅当主窗口位于前台时才处理 Esc，避免沉浸式切到其它应用后误吞对方 Esc。
     /// </summary>
     public sealed class LowLevelKeyboardHook : IDisposable
     {
@@ -43,17 +45,23 @@ namespace YeyouPlusPlus
         [DllImport("user32.dll", SetLastError = true)]
         private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
 
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
         private static extern IntPtr GetModuleHandle(string lpModuleName);
 
         private readonly Action onEsc;
+        private readonly Func<IntPtr> ownerHandleProvider;
         private readonly object sync = new object();
         private LowLevelKeyboardProc proc;
         private IntPtr hook = IntPtr.Zero;
+        private IntPtr ownerHandle = IntPtr.Zero;
 
-        public LowLevelKeyboardHook(Action onEsc)
+        public LowLevelKeyboardHook(Action onEsc, Func<IntPtr> ownerHandleProvider)
         {
             this.onEsc = onEsc ?? throw new ArgumentNullException(nameof(onEsc));
+            this.ownerHandleProvider = ownerHandleProvider ?? throw new ArgumentNullException(nameof(ownerHandleProvider));
         }
 
         /// <summary>钩子是否已挂载。</summary>
@@ -72,6 +80,8 @@ namespace YeyouPlusPlus
                     return;
                 }
 
+                ownerHandle = ownerHandleProvider();
+
                 // 必须持有委托引用，避免被 GC 回收导致回调地址失效。
                 proc = HookCallback;
                 hook = SetWindowsHookEx(WH_KEYBOARD_LL, proc, GetModuleHandle(null), 0);
@@ -89,6 +99,7 @@ namespace YeyouPlusPlus
                     hook = IntPtr.Zero;
                 }
                 proc = null;
+                ownerHandle = IntPtr.Zero;
             }
         }
 
@@ -99,12 +110,16 @@ namespace YeyouPlusPlus
                 int msg = wParam.ToInt32();
                 if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
                 {
-                    var info = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
-                    if (info.vkCode == VK_ESCAPE)
+                    // 仅主窗口前台时处理，避免切到其它应用后吞掉对方的 Esc。
+                    if (ownerHandle != IntPtr.Zero && GetForegroundWindow() == ownerHandle)
                     {
-                        onEsc?.Invoke();
-                        // 返回 1：拦截该按键，不再传递给后续钩子 / 目标窗口。
-                        return (IntPtr)1;
+                        var info = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
+                        if (info.vkCode == VK_ESCAPE)
+                        {
+                            onEsc?.Invoke();
+                            // 返回 1：拦截该按键，不再传递给后续钩子 / 目标窗口。
+                            return (IntPtr)1;
+                        }
                     }
                 }
             }
