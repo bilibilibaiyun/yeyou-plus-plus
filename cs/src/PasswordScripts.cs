@@ -38,9 +38,19 @@ namespace YeyouPlusPlus
     return null;
   }
 
-  document.addEventListener('submit', function (e) {
+  // 上报去抖：submit / click / Enter 可能接连触发同样的登录，1.5 秒内同账号+密码只报一次。
+  var lastReportU = null, lastReportP = null, lastReportT = 0;
+  function report(u, p, origin, action) {
+    var now = Date.now();
+    if (u === lastReportU && p === lastReportP && (now - lastReportT) < 1500) return;
+    lastReportU = u; lastReportP = p; lastReportT = now;
+    if (window.yppBridge && window.yppBridge.LoginCaptured) {
+      window.yppBridge.LoginCaptured(u, p, origin, action);
+    }
+  }
+
+  function reportForm(form) {
     try {
-      var form = e.target;
       if (!form || typeof form.querySelectorAll !== 'function') return;
       var pwds = form.querySelectorAll('input[type=password]');
       if (!pwds.length) return;
@@ -51,9 +61,53 @@ namespace YeyouPlusPlus
       var u = uEl ? uEl.value : '';
       var origin = window.location.origin || (window.location.protocol + '//' + window.location.host);
       var action = (form.action && form.action !== '') ? form.action : window.location.href;
-      if (window.yppBridge && window.yppBridge.LoginCaptured) {
-        window.yppBridge.LoginCaptured(u, p, origin, action);
+      report(u, p, origin, action);
+    } catch (err) {}
+  }
+
+  // 捕获 1：原生 form submit 提交。
+  document.addEventListener('submit', function (e) {
+    reportForm(e.target);
+  }, true);
+
+  // 捕获 2：登录按钮点击（大量网站用 AJAX 登录，不触发 submit；点击时兜底提取）。
+  document.addEventListener('click', function (e) {
+    try {
+      var t = e.target;
+      if (!t || !t.tagName) return;
+      var tn = t.tagName.toLowerCase();
+      var isBtn = (tn === 'button') ||
+        (tn === 'input' && (t.type === 'button' || t.type === 'submit' || t.type === 'image')) ||
+        (tn === 'a') ||
+        (t.getAttribute && t.getAttribute('role') === 'button');
+      if (!isBtn) return;
+      var form = (t.closest && t.closest('form')) || null;
+      if (form) {
+        reportForm(form);
+        return;
       }
+      // 无 form（纯 AJAX 登录）：全文档找已填密码框。
+      var pwd = document.querySelector('input[type=password]');
+      if (!pwd || !pwd.value) return;
+      var origin = window.location.origin || (window.location.protocol + '//' + window.location.host);
+      var uEl = pickUsername(pwd.form || document, pwd);
+      report(uEl ? uEl.value : '', pwd.value, origin, window.location.href);
+    } catch (err) {}
+  }, true);
+
+  // 捕获 3：密码框内按 Enter（AJAX 登录常用回车提交）。
+  document.addEventListener('keydown', function (e) {
+    try {
+      if (e.key !== 'Enter') return;
+      var el = document.activeElement;
+      if (!el || el.type !== 'password' || !el.value) return;
+      var form = el.form || document;
+      var pwds = form.querySelectorAll ? form.querySelectorAll('input[type=password]') : [];
+      if (!pwds.length) return;
+      var uEl = pickUsername(form, el);
+      var origin = window.location.origin || (window.location.protocol + '//' + window.location.host);
+      var action = (form.action && form.action !== '') ? form.action : window.location.href;
+      report(uEl ? uEl.value : '', el.value, origin, action);
     } catch (err) {}
   }, true);
 
