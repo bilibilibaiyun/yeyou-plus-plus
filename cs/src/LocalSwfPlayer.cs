@@ -55,8 +55,6 @@ namespace YeyouPlusPlus
 
             var dir = Path.Combine(Path.GetTempPath(), "YeyouPlusPlus", "swf");
             Directory.CreateDirectory(dir);
-            // 每次打开前清理旧的包装页，避免临时 HTML 无限累积。
-            CleanupOldWrappers(dir);
             var wrapperPath = Path.Combine(dir, "swf_" + Guid.NewGuid().ToString("N") + ".html");
             File.WriteAllText(wrapperPath, html, new UTF8Encoding(false));
 
@@ -80,11 +78,21 @@ namespace YeyouPlusPlus
                    "</body></html>";
         }
 
-        /// <summary>删除目录下旧的 swf_*.html 包装页（个别被占用时跳过，不影响打开）。</summary>
-        private static void CleanupOldWrappers(string dir)
+        /// <summary>
+        /// 删除临时目录下所有旧的 swf_*.html 包装页。
+        /// 仅在应用启动时调用一次（此时没有已打开标签，最安全）；
+        /// 不要在每次 CreateWrapper 前调用，否则会误删「标签仍打开」的旧包装页，
+        /// 导致切回旧 swf 标签刷新时报白屏/错误。
+        /// </summary>
+        public static void CleanupOldWrappers()
         {
+            var dir = Path.Combine(Path.GetTempPath(), "YeyouPlusPlus", "swf");
             try
             {
+                if (!Directory.Exists(dir))
+                {
+                    return;
+                }
                 foreach (var file in Directory.GetFiles(dir, "swf_*.html"))
                 {
                     try
@@ -93,13 +101,13 @@ namespace YeyouPlusPlus
                     }
                     catch
                     {
-                        // 文件被浏览器占用（正在播放的旧标签）时跳过，下次再清理。
+                        // 个别文件被占用时跳过。
                     }
                 }
             }
             catch
             {
-                // 目录枚举失败不影响打开。
+                // 目录枚举失败不影响启动。
             }
         }
 

@@ -367,7 +367,7 @@ namespace YeyouPlusPlus
             ShowView("browser");
         }
 
-        // ===== 标签切换快捷键（Ctrl+Tab / Ctrl+Shift+Tab / Ctrl+1~9） =====
+        // ===== 标签切换快捷键（Ctrl+Tab / Ctrl+PageDown 下一标签，Ctrl+PageUp 上一标签，Ctrl+1~9 跳转） =====
 
         private void SwitchToNextTab()
         {

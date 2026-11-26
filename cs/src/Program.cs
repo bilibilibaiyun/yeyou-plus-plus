@@ -36,6 +36,9 @@ namespace YeyouPlusPlus
 
                 InitCef();
 
+                // 启动时清理一次本地 swf 的临时包装页（此时尚无已打开标签，最安全）。
+                LocalSwfPlayer.CleanupOldWrappers();
+
                 var app = new App();
                 app.InitializeComponent();
                 app.Run();
